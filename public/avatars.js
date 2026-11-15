@@ -26,13 +26,20 @@ export function createAvatar(skin) {
   const legs=[limb(figure,-.13,.64,dark,bat?0x10151d:0x302136,true),limb(figure,.13,.64,dark,bat?0x10151d:0x302136,true)];
   box(figure,.49,.57,.26,suit,0,1.01,0);box(figure,.47,.12,.28,dark,0,.72,0);
   const arms=[limb(figure,-.34,1.24,suit,bat?0x131923:0xe8e0cf),limb(figure,.34,1.24,suit,bat?0x131923:0xe8e0cf)];
+  for(const side of [-1,1]) {
+    const arm=arms[side===-1?0:1], leg=legs[side===-1?0:1];
+    sphere(arm,.125,bat?0x252c37:0x754293,0,-.03,0,1.1,.7,1);
+    box(leg,.14,.24,.025,bat?0x303743:0x794b9a,0,-.22,-.115);
+    if(bat){box(arm,.185,.17,.2,0x171e29,0,-.34,0);for(let i=0;i<3;i++)box(arm,.045,.06,.07,0x171e29,side*.105,-.24-i*.06,.02,side*.3)}
+    else {box(arm,.18,.045,.19,0xe7deca,0,-.41,0);box(leg,.03,.42,.02,0x8c5da3,side*.045,-.24,-.112)}
+  }
   sphere(figure,.225,skinColor,0,1.61,0,1,1.12,.91);
   if(bat){
     // Cowl, pointed ears, pale eyes, gold belt and a flowing dark cape.
     sphere(figure,.23,0x171e29,0,1.69,.012,1,1,.93);
     box(figure,.31,.115,.07,skinColor,0,1.52,-.195);
     for(const x of [-.115,.115]){const ear=shape(figure,new THREE.ConeGeometry(.065,.23,4),0x171e29,x,1.94,.01);ear.rotation.z=x<0?.12:-.12;box(figure,.09,.025,.02,0xe9ecdf,x,1.69,-.214,x<0?-.18:.18)}
-    box(figure,.5,.10,.29,0xc9a640,0,.74,0);box(figure,.09,.11,.31,0xe4c25a,0,.74,0);
+    for(const side of [-1,1]){box(figure,.12,.09,.16,0x997e37,side*.21,.75,-.08);box(figure,.15,.18,.04,0x48515d,side*.16,1.07,-.145,side*.16)}box(figure,.5,.10,.29,0xc9a640,0,.74,0);box(figure,.09,.11,.31,0xe4c25a,0,.74,0);
     const emblem=shape(figure,new THREE.SphereGeometry(.12,12,8),0xc7a83d,0,1.15,-.145);emblem.scale.set(1.45,.6,.12);
     box(figure,.18,.045,.015,0x1b2029,0,1.15,-.164);for(const x of [-.105,.105])box(figure,.09,.035,.015,0x1b2029,x,1.16,-.165,x<0?-.35:.35);
     const cape=shape(figure,new THREE.BoxGeometry(.53,1.06,.055),0x171e29,0,.92,.19,-.12);cape.name='cape';
@@ -45,7 +52,7 @@ export function createAvatar(skin) {
     box(figure,.19,.48,.035,0x6a9a41,0,1.04,-.145);box(figure,.11,.18,.04,0xede2c8,0,1.22,-.17);box(figure,.055,.16,.05,0x56307a,0,1.18,-.2);
     for(const x of [-.16,.16])box(figure,.09,.42,.04,0x8a53ab,x,1.07,-.15,x<0?-.23:.23);
     for(const y of [.9,1.01,1.12])sphere(figure,.015,0xdabf77,.04,y,-.18);
-    box(figure,.1,.04,.025,0xe1ad4d,.17,1.19,-.18);
+    box(figure,.1,.04,.025,0xe1ad4d,.17,1.19,-.18);sphere(figure,.035,0xe2af40,.2,1.23,-.175);box(figure,.04,.12,.035,0x379451,0,1.14,-.21);
   }
   return {group:root,figure,arms,legs,phase:0,amount:0};
 }
