@@ -1,67 +1,39 @@
 import * as THREE from 'three';
-
-// Low-poly characters keep the multiplayer room friendly to mobile GPUs.
-const materials = new Map();
-function material(color, roughness = .8) {
-  const key = `${color}-${roughness}`;
-  if (!materials.has(key)) materials.set(key, new THREE.MeshStandardMaterial({ color, roughness }));
-  return materials.get(key);
+// Smooth, lightweight stylised figures with articulated shoulders and hips.
+const mats=new Map();function mat(color,metal=0){const k=`${color}:${metal}`;if(!mats.has(k))mats.set(k,new THREE.MeshStandardMaterial({color,roughness:.75,metalness:metal}));return mats.get(k)}
+function mesh(parent,geo,color,x=0,y=0,z=0,metal=0){const m=new THREE.Mesh(geo,mat(color,metal));m.position.set(x,y,z);parent.add(m);return m}
+function oval(parent,color,x,y,z,sx,sy,sz){const m=mesh(parent,new THREE.SphereGeometry(1,20,14),color,x,y,z);m.scale.set(sx,sy,sz);return m}
+function capsule(parent,color,x,y,z,r,len){return mesh(parent,new THREE.CapsuleGeometry(r,len,6,16),color,x,y,z)}
+function cylinder(parent,color,x,y,z,r1,r2,h){return mesh(parent,new THREE.CylinderGeometry(r1,r2,h,16),color,x,y,z)}
+export function createAvatar(skin){
+ const bat=skin==='batman',group=new THREE.Group(),figure=new THREE.Group();group.add(figure);
+ const fabric=bat?0x353e49:0x523067, shade=bat?0x171d27:0x382343;
+ // Legs and boots are modelled around hip pivots to keep feet at floor level.
+ const legs=[];for(const x of [-.13,.13]){const leg=new THREE.Group();leg.position.set(x,.76,0);figure.add(leg);legs.push(leg);capsule(leg,shade,0,-.31,0,.105,.38);oval(leg,bat?0x141b22:0x26232b,0,-.675,-.06,.115,.085,.18)}
+ // Shaped torso and fitted shoulders, rather than a stack of cubes.
+ const torso=cylinder(figure,fabric,0,1.12,0,.24,.19,.62);torso.scale.z=.7;
+ oval(figure,fabric,0,1.39,0,.26,.12,.16);oval(figure,shade,0,.8,0,.21,.11,.145);
+ const arms=[];for(const x of [-.32,.32]){const arm=new THREE.Group();arm.position.set(x,1.36,0);figure.add(arm);arms.push(arm);oval(arm,fabric,0,-.04,0,.12,.14,.12);capsule(arm,fabric,0,-.24,0,.085,.27);oval(arm,bat?0x171e27:0xe1ddd1,0,-.47,-.01,.09,.115,.085)}
+ cylinder(figure,bat?0x272a2e:0xe2ddd1,0,1.48,0,.10,.10,.12);
+ oval(figure,bat?0xc49c7c:0xe6e5dd,0,1.68,0,.205,.25,.17);
+ if(bat){
+  // Close-fitting cowl; exposed lower face and white eye lenses.
+  oval(figure,0x161d27,0,1.74,.004,.211,.205,.175);
+  oval(figure,0xc49c7c,0,1.58,-.144,.135,.078,.045);
+  for(const side of [-1,1]){const ear=mesh(figure,new THREE.ConeGeometry(.053,.25,12),0x161d27,side*.135,1.96,.005);ear.rotation.z=-side*.1;const eye=oval(figure,0xe6eee5,side*.083,1.75,-.16,.058,.019,.012);eye.rotation.z=side*.18}
+  const belt=cylinder(figure,0xb39849,0,.86,0,.215,.215,.095);belt.scale.z=.69;
+  oval(figure,0xc8a849,0,1.22,-.148,.125,.07,.014);oval(figure,0x20242a,0,1.22,-.162,.085,.025,.008);
+  // A tapered, slightly curved cape, attached at the shoulders.
+  const vertices=new Float32Array([-.22,1.39,.10,.22,1.39,.10,-.31,.10,.26,.31,.10,.26,0,.07,.29]);const capeGeo=new THREE.BufferGeometry();capeGeo.setAttribute('position',new THREE.BufferAttribute(vertices,3));capeGeo.setIndex([0,2,1,1,2,3,2,4,3]);capeGeo.computeVertexNormals();const cape=new THREE.Mesh(capeGeo,new THREE.MeshStandardMaterial({color:0x171c26,side:THREE.DoubleSide,roughness:1}));cape.name='cape';figure.add(cape);
+ }else{
+  // Hair and face sit flush against the head; details are curves and ellipsoids.
+  oval(figure,0x397b43,0,1.85,.01,.215,.105,.18);
+  for(const side of [-1,1]){oval(figure,0x397b43,side*.18,1.75,.01,.055,.13,.12);oval(figure,0x29262e,side*.075,1.71,-.165,.027,.022,.012)}
+  const smile=new THREE.Mesh(new THREE.TorusGeometry(.078,.009,6,20,Math.PI),mat(0xa72f40));smile.position.set(0,1.605,-.169);smile.rotation.z=Math.PI;figure.add(smile);
+  const vest=cylinder(figure,0x718342,0,1.12,-.092,.12,.1,.49);vest.scale.z=.35;
+  oval(figure,0xe8e2d3,0,1.33,-.153,.075,.10,.012);const tie=cylinder(figure,0x774097,0,1.25,-.166,.025,.018,.16);tie.scale.z=.5;
+  for(let i=0;i<3;i++)oval(figure,0xd0b878,.03,1.13-i*.075,-.153,.01,.01,.008);
+ }
+ return {group,figure,arms,legs,phase:0,amount:0};
 }
-function shape(parent, geometry, color, x, y, z, rx=0, ry=0, rz=0) {
-  const mesh = new THREE.Mesh(geometry, material(color));
-  mesh.position.set(x,y,z); mesh.rotation.set(rx,ry,rz); parent.add(mesh); return mesh;
-}
-function box(parent,w,h,d,color,x,y,z,rz=0) { return shape(parent,new THREE.BoxGeometry(w,h,d),color,x,y,z,0,0,rz); }
-function sphere(parent,r,color,x,y,z,sx=1,sy=1,sz=1) { const m=shape(parent,new THREE.SphereGeometry(r,12,8),color,x,y,z);m.scale.set(sx,sy,sz);return m; }
-function limb(parent, x, y, color, glove, leg=false) {
-  const pivot=new THREE.Group();pivot.position.set(x,y,0);parent.add(pivot);
-  const limbMesh=shape(pivot,new THREE.CapsuleGeometry(leg?.1:.09,leg?.35:.30,5,10),color,0,leg?-.26:-.22,0);limbMesh.scale.z=1.05;
-  if(leg)box(pivot,.21,.13,.32,glove,0,-.56,-.055);
-  else sphere(pivot,.1,glove,0,-.48,0,1,1.1,1);
-  return pivot;
-}
-export function createAvatar(skin) {
-  const bat=skin==='batman', root=new THREE.Group(), figure=new THREE.Group();root.add(figure);
-  const suit=bat?0x39404b:0x66378d, dark=bat?0x141b27:0x42215f, skinColor=bat?0xc99b79:0xf1eee3;
-  const legs=[limb(figure,-.13,.64,dark,bat?0x10151d:0x302136,true),limb(figure,.13,.64,dark,bat?0x10151d:0x302136,true)];
-  const torso=shape(figure,new THREE.CapsuleGeometry(.24,.25,6,12),suit,0,1.02,0);torso.scale.set(1,.95,.62);sphere(figure,.20,suit,0,.85,0,1.08,.65,.68);
-  const arms=[limb(figure,-.34,1.24,suit,bat?0x131923:0xe8e0cf),limb(figure,.34,1.24,suit,bat?0x131923:0xe8e0cf)];
-  for(const side of [-1,1]) {
-    const arm=arms[side===-1?0:1], leg=legs[side===-1?0:1];
-    sphere(arm,.125,bat?0x252c37:0x754293,0,-.03,0,1.1,.7,1);
-    box(leg,.14,.24,.025,bat?0x303743:0x794b9a,0,-.22,-.115);
-    if(bat){box(arm,.185,.17,.2,0x171e29,0,-.34,0);for(let i=0;i<3;i++)box(arm,.045,.06,.07,0x171e29,side*.105,-.24-i*.06,.02,side*.3)}
-    else {box(arm,.18,.045,.19,0xe7deca,0,-.41,0);box(leg,.03,.42,.02,0x8c5da3,side*.045,-.24,-.112)}
-  }
-  sphere(figure,.225,skinColor,0,1.61,0,1,1.12,.91);
-  if(bat){
-    // Cowl, pointed ears, pale eyes, gold belt and a flowing dark cape.
-    sphere(figure,.23,0x171e29,0,1.69,.012,1,1,.93);
-    box(figure,.31,.115,.07,skinColor,0,1.52,-.195);
-    for(const x of [-.115,.115]){const ear=shape(figure,new THREE.ConeGeometry(.065,.23,4),0x171e29,x,1.94,.01);ear.rotation.z=x<0?.12:-.12;box(figure,.09,.025,.02,0xe9ecdf,x,1.69,-.214,x<0?-.18:.18)}
-    for(const side of [-1,1]){box(figure,.12,.09,.16,0x997e37,side*.21,.75,-.08);box(figure,.15,.18,.04,0x48515d,side*.16,1.07,-.145,side*.16)}box(figure,.5,.10,.29,0xc9a640,0,.74,0);box(figure,.09,.11,.31,0xe4c25a,0,.74,0);
-    const emblem=shape(figure,new THREE.SphereGeometry(.12,12,8),0xc7a83d,0,1.15,-.145);emblem.scale.set(1.45,.6,.12);
-    box(figure,.18,.045,.015,0x1b2029,0,1.15,-.164);for(const x of [-.105,.105])box(figure,.09,.035,.015,0x1b2029,x,1.16,-.165,x<0?-.35:.35);
-    const cape=shape(figure,new THREE.BoxGeometry(.53,1.06,.055),0x171e29,0,.92,.19,-.12);cape.name='cape';
-  }else{
-    // Green swept hair, painted grin, tailored purple jacket and waistcoat.
-    sphere(figure,.23,0x30924d,0,1.77,.015,1,.55,.95);
-    for(const x of [-.15,-.05,.05,.15]){const tuft=shape(figure,new THREE.ConeGeometry(.075,.18,5),0x399d50,x,1.91,.02);tuft.rotation.z=-.25}
-    for(const x of [-.09,.09]){box(figure,.045,.035,.02,0x34313e,x,1.65,-.201);box(figure,.065,.018,.02,0x3f3550,x,1.71,-.194,x<0?-.2:.2)}
-    box(figure,.19,.035,.025,0xbb3547,0,1.53,-.204);for(const x of [-.1,.1])box(figure,.035,.03,.025,0xbb3547,x,1.55,-.197,x<0?-.5:.5);
-    box(figure,.19,.48,.035,0x6a9a41,0,1.04,-.145);box(figure,.11,.18,.04,0xede2c8,0,1.22,-.17);box(figure,.055,.16,.05,0x56307a,0,1.18,-.2);
-    for(const x of [-.16,.16])box(figure,.09,.42,.04,0x8a53ab,x,1.07,-.15,x<0?-.23:.23);
-    for(const y of [.9,1.01,1.12])sphere(figure,.015,0xdabf77,.04,y,-.18);
-    box(figure,.1,.04,.025,0xe1ad4d,.17,1.19,-.18);sphere(figure,.035,0xe2af40,.2,1.23,-.175);box(figure,.04,.12,.035,0x379451,0,1.14,-.21);
-  }
-  return {group:root,figure,arms,legs,phase:0,amount:0};
-}
-export function animateAvatar(a, now, dt, moving) {
-  a.amount=THREE.MathUtils.lerp(a.amount,moving?1:0,Math.min(1,dt*10));
-  a.phase+=dt*9;
-  const swing=Math.sin(a.phase)*a.amount;
-  a.legs[0].rotation.x=swing*.6;a.legs[1].rotation.x=-swing*.6;
-  a.arms[0].rotation.x=-swing*.48;a.arms[1].rotation.x=swing*.48;
-  a.figure.position.y=Math.abs(Math.sin(a.phase))*a.amount*.035;
-  const cape=a.figure.getObjectByName('cape');if(cape)cape.rotation.x=-.12-a.amount*(.12+Math.sin(a.phase)*.05);
-}
+export function animateAvatar(a,now,dt,moving){a.amount=THREE.MathUtils.lerp(a.amount,moving?1:0,Math.min(1,dt*10));a.phase+=dt*8;const swing=Math.sin(a.phase)*a.amount;a.legs[0].rotation.x=swing*.5;a.legs[1].rotation.x=-swing*.5;a.arms[0].rotation.x=-swing*.38;a.arms[1].rotation.x=swing*.38;a.figure.position.y=Math.abs(Math.sin(a.phase))*a.amount*.025;const cape=a.figure.getObjectByName('cape');if(cape)cape.rotation.x=-a.amount*(.05+Math.sin(a.phase)*.03)}

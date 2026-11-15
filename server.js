@@ -6,8 +6,8 @@ const server=createServer(app),wss=new WebSocketServer({server}),players=new Map
 let puzzle={hammer:false,crowbar:false,nails:false,boards:false,door:false};
 function broadcast(data,except){const msg=JSON.stringify(data);for(const c of wss.clients)if(c!==except&&c.readyState===1)c.send(msg)}
 function send(socket,data){if(socket?.readyState===1)socket.send(JSON.stringify(data))}
-function startLift(ids){for(const id of ids){const p=players.get(id);if(p){p.status='lift';p.room='lift';send(p.socket,{type:'lift'})}}waiting=null;}
-function publicPlayer(p){const {socket,status,...rest}=p;return rest}
+function startLift(ids){for(const id of ids){const p=players.get(id);if(p){clearTimeout(p.choiceTimer);p.status='lift';p.room='lift';send(p.socket,{type:'lift',together:ids.length>1})}}if(ids.includes(waiting))waiting=null;}
+function publicPlayer(p){const {socket,status,choiceTimer,...rest}=p;return rest}
 wss.on('connection',socket=>{const id=nextId++;socket.on('message',raw=>{let m;try{m=JSON.parse(raw.toString())}catch{return}
  if(m.type==='join'&&!players.has(id)){
   const a=Math.random()*Math.PI*2,p={id,socket,status:'playing',name:String(m.name||'Игрок').trim().slice(0,20)||'Игрок',skin:m.skin==='batman'?'batman':'joker',room:'main',x:Math.cos(a)*2,z:Math.sin(a)*2,rotation:0,y:0};players.set(id,p);
@@ -15,26 +15,26 @@ wss.on('connection',socket=>{const id=nextId++;socket.on('message',raw=>{let m;t
  }else if(!players.has(id))return;
  else if(m.type==='fall'){
   const p=players.get(id);if(p.room!=='main'||p.status!=='playing')return;p.status='choosing';p.room='lift';broadcast({type:'move',id,x:p.x,z:p.z,rotation:p.rotation,room:'lift'},socket);
-  if(waiting!==null&&waiting!==id&&players.has(waiting))startLift([waiting,id]);else send(socket,{type:'choice'});
+  if(waiting!==null&&waiting!==id&&players.has(waiting))startLift([waiting,id]);else {send(socket,{type:'choice',seconds:15});p.choiceTimer=setTimeout(()=>{if(players.has(id)&&p.status==='choosing')startLift([id])},15000)}
  }else if(m.type==='lift-choice'){
   const p=players.get(id);if(p.status!=='choosing'&&p.status!=='waiting')return;
   if(m.choice==='solo'){if(waiting===id)waiting=null;startLift([id])}
-  else if(m.choice==='together'){if(waiting!==null&&waiting!==id&&players.has(waiting))startLift([waiting,id]);else{waiting=id;p.status='waiting';send(socket,{type:'waiting'})}}
+  else if(m.choice==='together'){clearTimeout(p.choiceTimer);if(waiting!==null&&waiting!==id&&players.has(waiting))startLift([waiting,id]);else{waiting=id;p.status='waiting';send(socket,{type:'waiting'})}}
  }else if(m.type==='lift-arrived'){
-  const p=players.get(id);if(p.status!=='lift')return;p.status='playing';p.room='basement';p.x=0;p.z=7.5;broadcast({type:'move',id,x:p.x,z:p.z,rotation:p.rotation,room:p.room},socket);
+  const p=players.get(id);if(p.status!=='lift')return;p.status='playing';p.room='basement';p.x=id%2?-.55:.55;p.z=16;broadcast({type:'move',id,x:p.x,z:p.z,rotation:p.rotation,room:p.room},socket);
  }else if(m.type==='move'&&[m.x,m.z,m.rotation].every(Number.isFinite)){
-  const p=players.get(id);if(p.status!=='playing')return;p.x=Math.max(-8.4,Math.min(8.4,m.x));p.z=Math.max(-8.4,Math.min(8.4,m.z));p.rotation=m.rotation;p.y=Number.isFinite(m.y)?Math.max(0,Math.min(1.5,m.y)):0;broadcast({type:'move',id,x:p.x,z:p.z,y:p.y,rotation:p.rotation,room:p.room},socket);
+  const p=players.get(id);if(p.status!=='playing')return;const limit=p.room==='basement'?17.6:8.4;p.x=Math.max(-limit,Math.min(limit,m.x));p.z=Math.max(-limit,Math.min(limit,m.z));p.rotation=m.rotation;p.y=Number.isFinite(m.y)?Math.max(0,Math.min(1.5,m.y)):0;broadcast({type:'move',id,x:p.x,z:p.z,y:p.y,rotation:p.rotation,room:p.room},socket);
  }else if(m.type==='interact'){
   const p=players.get(id);if(p.status!=='playing'||p.room!=='basement')return;
   const near=(x,z)=>Math.hypot(p.x-x,p.z-z)<1.8;let result='';
-  if(m.target==='hammer'&&near(-7,-6)&&!puzzle.hammer){puzzle.hammer=true;result='Молоток найден!'}
-  else if(m.target==='crowbar'&&near(7,-6)&&!puzzle.crowbar){puzzle.crowbar=true;result='Гвоздодёр найден!'}
-  else if(m.target==='door'&&near(0,0)){
+  if(m.target==='hammer'&&near(-16,-16)&&!puzzle.hammer){puzzle.hammer=true;result='Молоток найден!'}
+  else if(m.target==='crowbar'&&near(16,-16)&&!puzzle.crowbar){puzzle.crowbar=true;result='Гвоздодёр найден!'}
+  else if(m.target==='door'&&near(0,-1)){
    if(!puzzle.nails){if(puzzle.crowbar){puzzle.nails=true;result='Четыре гвоздя вытащены гвоздодёром.'}else result='Нужен гвоздодёр, чтобы вытащить четыре гвоздя.'}
    else if(!puzzle.boards){if(puzzle.hammer){puzzle.boards=true;result='Доски сняты молотком.'}else result='Найди молоток, чтобы снять доски.'}
-   else if(!puzzle.door){puzzle.door=true;result='Дверь открыта! Продолжение следует.'}else result='Дверь открыта. Продолжение следует.';
+   else if(!puzzle.door){puzzle.door=true;result='Дверь открыта. Нажми ещё раз, чтобы войти.'}else {p.room='dark';p.x=0;p.z=4;send(socket,{type:'enter-dark'});broadcast({type:'move',id,x:p.x,z:p.z,rotation:p.rotation,room:p.room},socket);}
   }
   if(result){broadcast({type:'puzzle',puzzle});send(socket,{type:'message',text:result})}
  }
- });socket.on('close',()=>{if(waiting===id)waiting=null;if(players.delete(id)){broadcast({type:'leave',id});if(!players.size)puzzle={hammer:false,crowbar:false,nails:false,boards:false,door:false}}});});
+ });socket.on('close',()=>{if(waiting===id)waiting=null;clearTimeout(players.get(id)?.choiceTimer);if(players.delete(id)){broadcast({type:'leave',id});if(!players.size)puzzle={hammer:false,crowbar:false,nails:false,boards:false,door:false}}});});
 server.listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('Server ready'));
