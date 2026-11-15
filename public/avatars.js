@@ -15,7 +15,7 @@ function box(parent,w,h,d,color,x,y,z,rz=0) { return shape(parent,new THREE.BoxG
 function sphere(parent,r,color,x,y,z,sx=1,sy=1,sz=1) { const m=shape(parent,new THREE.SphereGeometry(r,12,8),color,x,y,z);m.scale.set(sx,sy,sz);return m; }
 function limb(parent, x, y, color, glove, leg=false) {
   const pivot=new THREE.Group();pivot.position.set(x,y,0);parent.add(pivot);
-  box(pivot,leg?.19:.17,leg?.55:.48,leg?.21:.18,color,0,leg?-.26:-.22,0);
+  const limbMesh=shape(pivot,new THREE.CapsuleGeometry(leg?.1:.09,leg?.35:.30,5,10),color,0,leg?-.26:-.22,0);limbMesh.scale.z=1.05;
   if(leg)box(pivot,.21,.13,.32,glove,0,-.56,-.055);
   else sphere(pivot,.1,glove,0,-.48,0,1,1.1,1);
   return pivot;
@@ -24,7 +24,7 @@ export function createAvatar(skin) {
   const bat=skin==='batman', root=new THREE.Group(), figure=new THREE.Group();root.add(figure);
   const suit=bat?0x39404b:0x66378d, dark=bat?0x141b27:0x42215f, skinColor=bat?0xc99b79:0xf1eee3;
   const legs=[limb(figure,-.13,.64,dark,bat?0x10151d:0x302136,true),limb(figure,.13,.64,dark,bat?0x10151d:0x302136,true)];
-  box(figure,.49,.57,.26,suit,0,1.01,0);box(figure,.47,.12,.28,dark,0,.72,0);
+  const torso=shape(figure,new THREE.CapsuleGeometry(.24,.25,6,12),suit,0,1.02,0);torso.scale.set(1,.95,.62);sphere(figure,.20,suit,0,.85,0,1.08,.65,.68);
   const arms=[limb(figure,-.34,1.24,suit,bat?0x131923:0xe8e0cf),limb(figure,.34,1.24,suit,bat?0x131923:0xe8e0cf)];
   for(const side of [-1,1]) {
     const arm=arms[side===-1?0:1], leg=legs[side===-1?0:1];
