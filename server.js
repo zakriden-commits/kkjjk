@@ -155,7 +155,7 @@ wss.on('connection',(socket,request)=>{
 
 function handleInteract(p,m,socket){
  const s=instanceFor(p);if(!s||p.status!=='playing'||p.room!=='basement')return;
- const puzzle=s.puzzle,own=WEAPONS[p.slot],near=(x,z)=>Math.hypot(p.x-x,p.z-z)<2.1;
+ const puzzle=s.puzzle,own=WEAPONS[p.slot],near=(x,z)=>Math.hypot(p.x-x,p.z-z)<2.8;
  let result='',used=null,enter=false;
  const spot=name=>s.spots.find(item=>item.name===name);
  const pick=(name,label)=>{if(puzzle[name]||!near(spot(name).x,spot(name).z))return false;puzzle[name]=true;result=label;used=name;if(name===own){p.equipped=name;broadcast({type:'equip',id:p.id,item:name,instance:p.instance},socket)}return true};
@@ -164,6 +164,8 @@ function handleInteract(p,m,socket){
   if(m.target==='hammer')pick('hammer','Молоток найден!');
   else if(m.target==='crowbar')pick('crowbar','Гвоздодёр найден!');
   else pick(m.target,`${WEAPON_NAMES[m.target]} найден! 30 патронов.`);
+  const targetSpot=spot(m.target);
+  if(!result&&targetSpot&&!puzzle[m.target]&&!near(targetSpot.x,targetSpot.z))send(socket,{type:'message',text:'Подойди ближе к предмету.'});
  }else if(m.target==='door'&&near(0,-1.2)){
   const allWeapons=WEAPONS.filter(w=>s.slots.size>1||w==='akA').every(w=>puzzle[w]);
   if(!puzzle.nails){

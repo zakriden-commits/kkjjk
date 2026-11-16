@@ -14,6 +14,9 @@ const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x120d0c);
 scene.fog=new THREE.Fog(0x120d0c,10,30);
 const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,95);
+// The camera must be part of the scene, otherwise everything attached to it
+// (the weapon in your hands, the torch) is never rendered.
+scene.add(camera);
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
 renderer.setSize(innerWidth,innerHeight);
@@ -135,7 +138,7 @@ fetch('/api/version').then(r=>r.json()).then(d=>$('#build-info').textContent='с
 const lobbyScene=new THREE.Scene();
 lobbyScene.background=new THREE.Color(0x160a08);
 lobbyScene.fog=new THREE.Fog(0x160a08,7,26);
-const lobbyCamera=new THREE.PerspectiveCamera(66,innerWidth/innerHeight,.1,60);
+const lobbyCamera=new THREE.PerspectiveCamera(66,innerWidth/innerHeight,.1,60);scene.add(lobbyCamera);
 lobbyCamera.position.set(0,1.7,8);
 const lobbyMonster=createMonster();
 lobbyMonster.group.position.set(0,0,-2);
@@ -170,7 +173,7 @@ function setRoom(next){
  scene.fog.far=room==='main'?27:room==='basement'?34:22;
  ambient.intensity=room==='main'?1.35:room==='basement'?1.15:.3;
  light.intensity=room==='main'?1.0:room==='basement'?.42:.1;
- torch.intensity=room==='basement'?110:0;
+ torch.intensity=room==='basement'?80:0;
  torchFill.intensity=room==='basement'?4:0;
  pitLight.intensity=room==='main'?16:0;
  $('#inventory').hidden=room!=='basement';
@@ -246,7 +249,7 @@ function equipOther(p,item){
   if(item){const model=makeHeldModel(item);model.scale.setScalar(.85);p.heldModel=model;p.character.hand?.add(model)}}}
 function updateAction(){
  if(room!=='basement'||inTransition){action.hidden=true;return}
- const near=(x,z)=>Math.hypot(pos.x-x,pos.z-z)<2.6;
+ const near=(x,z)=>Math.hypot(pos.x-x,pos.z-z)<2.8;
  const spot=name=>spots.find(s=>s.name===name);
  const available=name=>spot(name)&&!puzzle[name]&&near(spot(name).x,spot(name).z);
  activeTarget=available('hammer')?'hammer':available('crowbar')?'crowbar':
