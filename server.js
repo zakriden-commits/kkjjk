@@ -16,7 +16,7 @@ app.use(express.static('public',{setHeaders:cacheHeaders}));
 
 const server=createServer(app),wss=new WebSocketServer({server}),players=new Map(),instances=new Map();
 let nextId=1,nextInstance=1,waiting=null;
-const WEAPONS=['akA','akB'],WEAPON_NAMES={akA:'красный АК-47',akB:'синий АК-47'},MAG=30,SLEEP_MS=15000,HITS_TO_SLEEP=10;
+const WEAPONS=['akA','akB'],WEAPON_NAMES={akA:'красный АК-47',akB:'синий АК-47'},MAG=30,SLEEP_MS=15000,HITS_TO_SLEEP=10,RESCUE_MS=120000,REVIVE_MS=15000;
 const freshPuzzle=()=>({crowbar:false,hammer:false,akA:false,akB:false,nails:false,boards:false,door:false});
 const send=(socket,data)=>{if(socket?.readyState===1)socket.send(JSON.stringify(data))};
 const broadcast=(data,except)=>{for(const c of wss.clients)if(c!==except)send(c,data)};
@@ -82,7 +82,7 @@ wss.on('connection',(socket,request)=>{
    return}
   if(raw.length>16000)return;let m;try{m=JSON.parse(raw.toString())}catch{return}if(!m||typeof m!=='object')return;
   if(m.type==='join'&&!players.has(id)){
-   const a=Math.random()*Math.PI*2,p={id,socket,status:'playing',name:String(m.name||'Игрок').trim().slice(0,20)||'Игрок',skin:m.skin==='batman'?'batman':'deadpool',room:'main',instance:null,slot:0,x:Math.cos(a)*2,z:Math.sin(a)*2,rotation:0,y:0,equipped:null,voice:false,audioBytes:0,audioStamp:0,noiseUntil:0,noiseLoudUntil:0,ammo:MAG,reloadUntil:0};
+   const a=Math.random()*Math.PI*2,p={id,socket,status:'playing',name:String(m.name||'Игрок').trim().slice(0,20)||'Игрок',skin:m.skin==='batman'?'batman':'deadpool',room:'main',instance:null,slot:0,x:Math.cos(a)*2,z:Math.sin(a)*2,rotation:0,y:0,equipped:null,down:false,downUntil:0,reviveAt:0,rescuing:null,voice:false,audioBytes:0,audioStamp:0,noiseUntil:0,noiseLoudUntil:0,ammo:MAG,reloadUntil:0};
    players.set(id,p);const ua=String(agent);
    lastVisit={device:/iPhone|iPad/i.test(ua)?'iPhone / iPad':/Android/i.test(ua)?'Android':/Windows/i.test(ua)?'Windows':/Macintosh/i.test(ua)?'Mac':'другое устройство',time:new Date().toISOString()};
    send(socket,{type:'welcome',id,player:publicPlayer(p),players:[...players.values()].filter(q=>q.id!==id).map(publicPlayer),puzzle:freshPuzzle()});
@@ -119,6 +119,12 @@ wss.on('connection',(socket,request)=>{
    p.equipped=item;broadcast({type:'equip',id,item,instance:p.instance},socket);
   }else if(m.type==='interact'){
    handleInteract(p,m,socket);
+  }else if(m.type==='rescue'){
+   console.log('RESCUE-MSG',JSON.stringify(m),'status',p.status,'room',p.room,'down',p.down);
+   const s=instanceFor(p);if(!s||p.room!=='basement'||p.down||p.status!=='playing')return;
+   const target=players.get(m.target);
+   if(m.on&&target&&target.down&&target.instance===p.instance&&Math.hypot(target.x-p.x,target.z-p.z)<3.4)p.rescuing=target.id;
+   else if(!m.on||p.rescuing===m.target)p.rescuing=null;
   }else if(m.type==='reload'){
    const s=instanceFor(p);if(!s||p.room!=='basement'||!p.equipped||!WEAPONS.includes(p.equipped))return;
    if(p.ammo>=MAG||p.reloadUntil>Date.now())return;
@@ -192,9 +198,37 @@ setInterval(()=>{
  const now=Date.now();
  for(const [id,session] of instances){
   const {monster:m,n}=session,cells=cellsFor(n),entry=entryFor(n);
-  const targets=instancePlayers(id).filter(p=>p.room==='basement'&&p.status==='playing'&&!isSafe(n,p.x,p.z));
+  const targets=instancePlayers(id).filter(p=>p.room==='basement'&&p.status==='playing'&&!p.down&&!isSafe(n,p.x,p.z));
   if(m.sleepUntil>now){inInstance(id,{type:'monster',x:m.x,z:m.z,rotation:m.rotation,chasing:false,sleeping:true});continue}
   if(m.sleepUntil&&m.sleepUntil<=now){m.sleepUntil=0;inInstance(id,{type:'monster-wake'})}
+  const downedList=instancePlayers(id).filter(q=>q.down);
+  for(const downed of downedList){
+   if(now>downed.downUntil){
+    downed.down=false;downed.reviveAt=0;
+    for(const q of instancePlayers(id)){send(q.socket,{type:'over',reason:`${downed.name} не дождался помощи`});q.status='over'}
+    session.over=true;
+    continue}
+   const rescuer=instancePlayers(id).find(q=>q.rescuing===downed.id&&!q.down&&Math.hypot(q.x-downed.x,q.z-downed.z)<3.2);
+   if(rescuer){
+    // Michael walks to the sound, but a rescue in progress is not an instant death.
+    const near=now>(m.calmUntil||0)&&Math.hypot(m.x-downed.x,m.z-downed.z)<2.2;
+    if(near){
+     // He is standing over you: the rescue pauses, it does not fail. Shoot him or lead him away.
+     inInstance(id,{type:'rescue',id:downed.id,by:rescuer.id,progress:downed.reviveAt/REVIVE_MS,interrupted:true});
+    }else{
+     downed.reviveAt=Math.min(REVIVE_MS,downed.reviveAt+100);
+     if(now>m.calmUntil){m.target={x:downed.x,z:downed.z};m.until=now+4000;m.rescueTarget=true}
+     inInstance(id,{type:'rescue',id:downed.id,by:rescuer.id,progress:downed.reviveAt/REVIVE_MS});
+     if(downed.reviveAt>=REVIVE_MS){
+      downed.down=false;downed.reviveAt=0;
+      inInstance(id,{type:'revived',id:downed.id,name:downed.name});
+      for(const q of instancePlayers(id))if(q.rescuing===downed.id)q.rescuing=null;
+      m.target=null;m.until=0;m.rescueTarget=false;m.calmUntil=now+6000;
+     }
+    }
+   }else if(downed.reviveAt){downed.reviveAt=Math.max(0,downed.reviveAt-60);inInstance(id,{type:'rescue',id:downed.id,by:null,progress:downed.reviveAt/REVIVE_MS})}
+  }
+  if(!instancePlayers(id).some(q=>q.rescuing))m.rescueTarget=false;
   if(!targets.length){inInstance(id,{type:'monster',x:m.x,z:m.z,rotation:m.rotation,chasing:false,sleeping:false});continue}
   let heard=null,best=Infinity;
   for(const p of targets){
@@ -212,12 +246,25 @@ setInterval(()=>{
    else m.waypoint=step===start?{x:dest.x,z:dest.z}:cellCenter(n,step);
    if(isSafe(n,m.waypoint.x,m.waypoint.z))m.waypoint=cellCenter(n,start);
   }
+  if(session.over)continue;
   const point=m.waypoint,dx=point.x-m.x,dz=point.z-m.z,distance=Math.hypot(dx,dz);
-  if(distance>.05){const speed=m.target?4.3:1.7,amount=Math.min(distance,speed*.1);m.x+=dx/distance*amount;m.z+=dz/distance*amount;m.rotation=Math.atan2(-dx,-dz)}
-  for(const p of targets)if(Math.hypot(p.x-m.x,p.z-m.z)<.85){
-   p.x=p.id%2?-.7:.7;p.z=entry.z-1;p.noiseUntil=0;send(p.socket,{type:'caught',x:p.x,z:p.z});
-   broadcast({type:'move',...publicPlayer(p)},p.socket);m.target=null;m.until=0;break}
+  if(distance>.05){const speed=m.rescueTarget?0.9:(m.target?4.3:1.7),amount=Math.min(distance,speed*.1);m.x+=dx/distance*amount;m.z+=dz/distance*amount;m.rotation=Math.atan2(-dx,-dz)}
+  for(const p of targets)if(!p.rescuing&&now>(m.calmUntil||0)&&Math.hypot(p.x-m.x,p.z-m.z)<.85){
+   const alive=instancePlayers(id).filter(q=>!q.down&&q.room==='basement');
+   if(session.coop&&alive.length>1){
+    p.down=true;p.downUntil=now+RESCUE_MS;p.reviveAt=0;p.noiseUntil=0;p.noiseLoudUntil=0;
+    inInstance(id,{type:'downed',id:p.id,name:p.name,x:p.x,z:p.z,until:p.downUntil});
+    send(p.socket,{type:'you-downed',until:p.downUntil});
+    broadcast({type:'move',...publicPlayer(p)},p.socket);
+    m.waypoint=null;m.rescueTarget=false;m.calmUntil=now+12000;
+    {let far;let guard=0;do{far=cellCenter(n,Math.floor(Math.random()*n*n));guard++}while(guard<40&&(isSafe(n,far.x,far.z)||Math.hypot(far.x-p.x,far.z-p.z)<10));
+     m.target=far;m.until=now+9000}
+   }else{
+    p.x=p.id%2?-.7:.7;p.z=entry.z-1;p.noiseUntil=0;send(p.socket,{type:'caught',x:p.x,z:p.z});send(p.socket,{type:'killed'});
+    broadcast({type:'move',...publicPlayer(p)},p.socket);m.target=null;m.until=0}
+   break}
   inInstance(id,{type:'monster',x:m.x,z:m.z,rotation:m.rotation,chasing:!!m.target,sleeping:false});
  }
 },100);
+globalThis.__dbg=process.env.DBG==='1';
 server.listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('Server ready'));

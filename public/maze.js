@@ -10,7 +10,8 @@ export function createMaze(n=gridFor(false)){
  const cache=new Map();
  function material(color,metalness=0){const key=`${color}:${metalness}`;if(!cache.has(key))cache.set(key,new THREE.MeshStandardMaterial({color,roughness:.95,metalness}));return cache.get(key)}
  function box(w,h,d,x,y,z,color,parent=group,metalness=0){const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(color,metalness));mesh.position.set(x,y,z);parent.add(mesh);return mesh}
- function wall(x,z,w,d){box(w,3.6,d,x,1.8,z,WALL);box(w,.1,d,x,.05,z,CORRIDOR);walls.push({x,z,w,d})}
+ const wallDefs=[];
+ function wall(x,z,w,d){wallDefs.push({x,z,w,d});walls.push({x,z,w,d})}
  function sphere(parent,r,color,x,y,z){const mesh=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),material(color,.3));mesh.position.set(x,y,z);parent.add(mesh);return mesh}
  box(size,.2,size,0,-.1,0,FLOOR);box(size,.2,size,0,3.6,0,CEIL);
  const cells=layout(n),center=Math.floor(n*n/2);let lampCount=0;
@@ -21,6 +22,16 @@ export function createMaze(n=gridFor(false)){
   if((x+z)%2===0){box(1.1,.04,.22,cx,3.48,cz,0x5e170d);box(1.0,.02,.12,cx,3.455,cz,0xb8301a)}
   if(lampCount<4&&x%5===0&&z%5===0){const lamp=new THREE.PointLight(0xff5a26,6,15,1.5);lamp.position.set(cx,3.15,cz);group.add(lamp);lampCount++}
  }
+ // One instanced mesh per material keeps a 17x17 maze cheap enough for a phone.
+ if(wallDefs.length){
+  const geometry=new THREE.BoxGeometry(1,1,1),matrix=new THREE.Matrix4();
+  const body=new THREE.InstancedMesh(geometry,material(WALL),wallDefs.length),strip=new THREE.InstancedMesh(geometry,material(CORRIDOR),wallDefs.length);
+  wallDefs.forEach((w,i)=>{
+   matrix.makeScale(w.w,3.6,w.d);matrix.setPosition(w.x,1.8,w.z);body.setMatrixAt(i,matrix);
+   matrix.makeScale(w.w,.1,w.d);matrix.setPosition(w.x,.05,w.z);strip.setMatrixAt(i,matrix)});
+  body.instanceMatrix.needsUpdate=true;strip.instanceMatrix.needsUpdate=true;
+  group.add(body,strip);
+ }
  // The lift square is the only safe ground; it is a small three-step box.
  for(let x=-1.5;x<=1.5;x+=1)for(let z=-1.5;z<=1.5;z+=1)box(1.02,.016,1.02,entry.x+x,.016,entry.z+z,0x3f5a3c);
  box(3.3,.03,.12,entry.x,.03,entry.z-1.6,0x76e08a);box(3.3,.03,.12,entry.x,.03,entry.z+1.6,0x76e08a);
@@ -30,7 +41,8 @@ export function createMaze(n=gridFor(false)){
  box(2.4,2.9,.08,entry.x-2.6,1.45,signZ,0x2b2320);box(1.9,2.55,.08,entry.x-2.6,1.28,signZ-.03,0x171310);
  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;const ctx=canvas.getContext('2d');
  ctx.fillStyle='#1c0d0b';ctx.fillRect(0,0,512,256);ctx.fillStyle='#ff5a2b';ctx.textAlign='center';ctx.font='bold 62px Arial';ctx.fillText('ПРАВИЛА',256,96);
- ctx.font='30px Arial';ctx.fillStyle='#e8c9b6';ctx.fillText('Найди 4 предмета',256,158);ctx.fillText('и не шуми',256,200);
+ const coop=n>=15;
+ ctx.font='30px Arial';ctx.fillStyle='#e8c9b6';ctx.fillText(coop?'Вдвоём: 4 предмета':'Один: 3 предмета',256,158);ctx.fillText(coop?'Оружие у каждого своё':'Не шуми, он слышит',256,200);
  const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.3,.74),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas)}));
  sign.position.set(entry.x-2.6,1.65,signZ-.08);sign.rotation.y=Math.PI;group.add(sign);
  // One central door with a solid wall behind it: opening it teleports to level three.

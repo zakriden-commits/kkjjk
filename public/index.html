@@ -1,4 +1,4 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#150806"><title>Дени Ислам</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Дени Ислам"><link rel="stylesheet" href="/style.css"><script type="importmap">{"imports":{"three":"/vendor/three/three.module.js","three/addons/":"/vendor/three/addons/"}}</script></head>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#150806"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><title>Дени Ислам</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Дени Ислам"><link rel="stylesheet" href="/style.css"><script type="importmap">{"imports":{"three":"/vendor/three/three.module.js","three/addons/":"/vendor/three/addons/"}}</script></head>
 <body class="lava">
 <div id="game"></div>
 <div id="lobby" class="overlay"><div class="lobby-card">
@@ -14,7 +14,7 @@
  <p id="build-info">сборка ...</p>
  <button id="play">Играть <span>↗</span></button>
  <p id="status">ВЫ ПОПАДЁТЕ В ОДНУ КОМНАТУ</p>
- <div class="lobby-actions"><button id="voice-btn" type="button">🎙 Голос</button><button id="history-btn" type="button">История</button><button class="settings-open" type="button">Настройки</button></div>
+ <div class="lobby-actions"><button id="install-btn" type="button" hidden>⬇ Установить</button><button id="voice-btn" type="button">🎙 Голос</button><button id="history-btn" type="button">История</button><button class="settings-open" type="button">Настройки</button></div>
  <div class="card-footer"><span>01 / 01</span><span>СДЕЛАНО ДЛЯ ДРУЗЕЙ ♥</span></div>
 </div><div class="lobby-note">МАЛЕНЬКИЙ МИР ДЛЯ БОЛЬШОЙ ДРУЖБЫ ✳</div></div>
 
@@ -35,6 +35,11 @@
   <button id="slot-weapon" disabled><img src="/ak.svg" alt=""><span>АК-47</span></button>
  </div>
  <button id="mic" hidden type="button">🎙 Выкл</button>
+ <button id="rescue" hidden type="button">СПАСТИ</button>
+ <div id="rescue-bar" hidden><i></i></div>
+ <div id="banner" hidden></div>
+ <div id="dead" hidden><strong>ТЫ УБИТ</strong><span id="dead-text">Друг может спасти тебя</span></div>
+ <div id="over" hidden><strong>ВЫ ПРОИГРАЛИ</strong><span id="over-text"></span><button id="over-btn" type="button">В лобби</button></div>
  <div id="connection" hidden>Соединение потеряно. <button id="reconnect">Вернуться в лобби</button></div>
  <div class="controls-hint"><span><b>◉</b> ДВИЖЕНИЕ</span><span>ОБЗОР <b>◎</b></span></div>
  <div id="joystick"><div id="stick"></div></div>

@@ -1,4 +1,4 @@
-export const CELL=4, GRID=11, COOP_GRID=15, MAZE_LIMIT=21.6;
+export const CELL=4, GRID=13, COOP_GRID=17, MAZE_LIMIT=21.6;
 // The maze is mirrored by the server and the browser, so it must stay deterministic.
 export function gridFor(coop){return coop?COOP_GRID:GRID}
 export function limitFor(n){return ((n-1)/2)*CELL}
@@ -7,6 +7,7 @@ export function layout(n=GRID){
  const dirs=[[0,-1],[1,0],[0,1],[-1,0]],cells=Array.from({length:n*n},()=>({seen:false,open:[false,false,false,false]}));
  let seed=(49371+n*7919)>>>0;const rand=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296};
  const center=Math.floor(n*n/2),stack=[n*n-1];cells[stack[0]].seen=true;
+ const link=(i,d)=>{const x=i%n,z=Math.floor(i/n),j=(z+dirs[d][1])*n+(x+dirs[d][0]);cells[i].open[d]=true;cells[j].open[(d+2)%4]=true;return j};
  while(stack.length){const i=stack[stack.length-1],x=i%n,z=Math.floor(i/n),options=[];
   for(let d=0;d<4;d++){const nx=x+dirs[d][0],nz=z+dirs[d][1],j=nz*n+nx;
    if(nx<0||nx>=n||nz<0||nz>=n||cells[j].seen)continue;
@@ -14,6 +15,22 @@ export function layout(n=GRID){
    options.push([d,j])}
   if(!options.length){stack.pop();continue}
   const [d,j]=options[Math.floor(rand()*options.length)];cells[i].open[d]=true;cells[j].open[(d+2)%4]=true;cells[j].seen=true;stack.push(j)}
+ // Rooms and extra passages: a maze that is only dead ends feels cheap.
+ const rooms=n>=15?5:3;
+ for(let r=0;r<rooms;r++){
+  const ax=1+Math.floor(rand()*(n-3)),az=2+Math.floor(rand()*(n-4));
+  if(Math.abs(ax-(n-1)/2)<2&&Math.abs(az-(n-1)/2)<2)continue;
+  link(az*n+ax,1);link((az+1)*n+ax,1);link(az*n+ax,2);link(az*n+ax+1,2);
+ }
+ const extra=Math.floor(n*n*.09);
+ for(let k=0;k<extra;k++){
+  const i=Math.floor(rand()*n*n),x=i%n,z=Math.floor(i/n),d=Math.floor(rand()*4);
+  const nx=x+dirs[d][0],nz=z+dirs[d][1];
+  if(nx<0||nx>=n||nz<0||nz>=n)continue;
+  const j=nz*n+nx;
+  if((i===center&&j===center-n)||(i===center-n&&j===center))continue;
+  link(i,d);
+ }
  return cells;
 }
 export function cellCenter(n,i){const half=(n-1)/2;return {x:(i%n-half)*CELL,z:(Math.floor(i/n)-half)*CELL}}

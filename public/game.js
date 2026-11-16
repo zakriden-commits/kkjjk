@@ -13,7 +13,7 @@ const $=selector=>document.querySelector(selector);
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x120d0c);
 scene.fog=new THREE.Fog(0x120d0c,10,30);
-const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,80);
+const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,95);
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
 renderer.setSize(innerWidth,innerHeight);
@@ -63,10 +63,12 @@ const torchFill=new THREE.PointLight(0xff9a6a,0,7);camera.add(torchFill);
 
 // ---------------------------------------------------------------- state
 let socket=null,playing=false,selfId=0,selfSlot=0,ownWeapon='akA';
-let room='main',sessionId=null,n=11,maze=null,spots=[],puzzle={crowbar:false,hammer:false,akA:false,akB:false,nails:false,boards:false,door:false};
+let coopMode=false,room='main',sessionId=null,n=13,maze=null,spots=[],puzzle={crowbar:false,hammer:false,akA:false,akB:false,nails:false,boards:false,door:false};
 let equipped=null,ammo=MAG,reloadUntil=0,shooting=false,lastShot=0;
 let stamina=100,sprinting=false,exhausted=false,toolUseUntil=0,inTransition=false,portalReady=0;
 let vertical=0,jumpVelocity=0,activeTarget=null,lastLiftStart=0;
+let selfDown=false,downUntil=0,overShown=false,rescueHolding=false;
+const downedOthers=new Map();
 let yaw=0,pitch=0,pos=new THREE.Vector3(4.5,1.65,0),keys={},move={x:0,y:0};
 const others=new Map();
 const audio={context:null};
@@ -96,6 +98,13 @@ function gunshot(distance=0){try{const ctx=audio.context;if(!ctx||ctx.state!=='r
  tone(90,.16,'sawtooth',.16*(1-distance/40||1),40)}catch{}}
 function reloadSound(){tone(320,.06,'square',.05);setTimeout(()=>tone(220,.07,'square',.05),220);setTimeout(()=>tone(440,.06,'square',.06),480)}
 function soundLift(){tone(66,3,'triangle',.05,48);setTimeout(()=>{tone(880,.5,'sine',.05);setTimeout(()=>tone(1108,.5,'sine',.05),240)},3300)}
+const monsterMusic=new Audio('/audio/myers.mp3');monsterMusic.loop=true;monsterMusic.preload='auto';monsterMusic.volume=0;
+const killAudio=new Audio('/audio/kill.mp3');killAudio.preload='auto';
+let musicFailed=false,lastHeart=0;
+monsterMusic.addEventListener('error',()=>{musicFailed=true});
+killAudio.addEventListener('error',()=>{killAudio.dataset.missing='1'});
+function playKill(){if(killAudio.dataset.missing)return playSound('caught');try{killAudio.currentTime=0;killAudio.play().catch(()=>playSound('caught'))}catch{playSound('caught')}}
+function unlockAudio_(){try{monsterMusic.muted=true;monsterMusic.play().then(()=>{monsterMusic.pause();monsterMusic.muted=false}).catch(()=>{monsterMusic.muted=false})}catch{}}
 function playSound(kind){if(kind==='door')tone(120,.3,'square',.07,60);else if(kind==='caught')tone(58,.5,'sawtooth',.09,36);else if(kind==='tool')tone(300,.12,'square',.06,180);else if(kind==='sleep')tone(70,.9,'sine',.09,34)}
 
 // ---------------------------------------------------------------- UI helpers
@@ -105,6 +114,11 @@ function notify(text){const node=$('#place-notice');node.textContent=text;node.h
 function showDialog(title,text,buttons){$('#modal-title').textContent=title;$('#modal-text').textContent=text;const container=$('#modal-buttons');container.replaceChildren();
  for(const [caption,fn] of buttons){const button=document.createElement('button');button.textContent=caption;button.onclick=fn;container.append(button)}modal.hidden=false}
 function send(data){if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(data))}
+const deadScreen=$('#dead'),deadText=$('#dead-text'),bannerBox=$('#banner'),overScreen=$('#over'),overText=$('#over-text'),
+ rescueButton=$('#rescue'),rescueBar=$('#rescue-bar'),rescueFill=rescueBar.querySelector('i');
+function showBanner(text,ms=6000){bannerBox.textContent=text;bannerBox.hidden=false;clearTimeout(showBanner.timer);showBanner.timer=setTimeout(()=>bannerBox.hidden=true,ms)}
+function clockText(ms){const total=Math.max(0,Math.ceil(ms/1000));return `${Math.floor(total/60)}:${String(total%60).padStart(2,'0')}`}
+$('#over-btn').onclick=()=>location.reload();
 document.querySelectorAll('.settings-open').forEach(button=>button.onclick=()=>settings.hidden=false);
 $('#settings-close').onclick=()=>settings.hidden=true;
 $('#history-btn').onclick=async()=>{let text='Пока никто не заходил.';try{const data=await (await fetch('/api/history')).json();
@@ -164,6 +178,38 @@ function setRoom(next){
  monster.group.visible=room==='basement'&&monsterUpdated>0;
  updateInventory();updateAction();
 }
+let rescueTick=0;
+function updateRescue(){
+ if(room!=='basement'||selfDown||overShown||inTransition){rescueButton.hidden=true;currentRescue=null;return}
+ let best=null,bestDistance=3.6;
+ for(const [id,downed] of downedOthers){
+  const distance=Math.hypot(pos.x-downed.x,pos.z-downed.z);
+  const facing=Math.atan2(-(downed.x-pos.x),-(downed.z-pos.z));
+  const diff=Math.abs(Math.atan2(Math.sin(facing-yaw),Math.cos(facing-yaw)));
+  if(distance<bestDistance&&diff<1.05){bestDistance=distance;best={...downed,id,distance}}
+ }
+ currentRescue=best;
+ rescueButton.hidden=!best;
+ if(best)rescueButton.textContent=`СПАСТИ ${best.name} — держи`;
+ if(!best&&rescueHolding){rescueHolding=false;send({type:'rescue',on:false})}
+ const now=performance.now();
+ if(selfDown&&now>rescueTick){rescueTick=now+500;deadText.textContent=`Друг может спасти тебя. Осталось ${clockText(downUntil-Date.now())}`}
+}
+function updateMonsterMusic(){
+ const active=room==='basement'&&monster.group.visible&&!monsterSleeping&&!overShown;
+ if(!active){if(!monsterMusic.paused)monsterMusic.pause();monsterMusic.volume=0;return}
+ const distance=Math.hypot(pos.x-monster.group.position.x,pos.z-monster.group.position.z);
+ const volume=THREE.MathUtils.clamp((11-distance)/9,0,1);
+ if(volume<=.02){if(!monsterMusic.paused)monsterMusic.pause();return}
+ if(musicFailed){
+  // No music file yet: a low pulse that gets faster as he gets closer.
+  const now=performance.now(),interval=260+volume*900;
+  if(now-lastHeart>1300-interval*.7){lastHeart=now;tone(48+volume*22,.22,'sine',.05+volume*.05,36)}
+  return
+ }
+ monsterMusic.volume=Math.min(1,volume)*.9;
+ if(monsterMusic.paused)monsterMusic.play().catch(()=>{musicFailed=true});
+}
 function sameLocation(p){return p.room===room&&(room==='main'||(sessionId!==null&&p.instance===sessionId))}
 
 // ---------------------------------------------------------------- inventory and actions
@@ -208,7 +254,7 @@ function updateAction(){
 action.onclick=()=>{
  if(!activeTarget)return;
  if(activeTarget==='rules'){
-  showDialog('Правила',sessionId&&spots.length>2
+  showDialog('Правила',coopMode
    ?'Вдвоём нужно найти четыре предмета: гвоздодёр, молоток и по одному АК-47 каждому. Оружие игрока один нельзя взять игроку два. Дверь в центре открывается гвоздодёром и молотком, но пройти можно только когда найдены оба АК-47. Майкл слышит шум: 10 попаданий отправляют его в спячку на 15 секунд. Зелёный квадрат у лифта — безопасная зона.'
    :'Один в лабиринте: найди гвоздодёр, молоток и свой АК-47. Открой центральную дверь гвоздодёром и молотком, затем войди. 10 попаданий из АК-47 усыпляют Майкла на 15 секунд. Зелёный квадрат у лифта — безопасная зона.',
    [['Понятно',()=>modal.hidden=true]]);
@@ -245,6 +291,12 @@ function reload(){
  reloadUntil=performance.now()+1700;
  setTimeout(()=>{ammo=MAG;updateInventory()},1700);
 }
+let currentRescue=null;
+rescueButton.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();
+ if(!currentRescue)return;rescueHolding=true;send({type:'rescue',on:true,target:currentRescue.id})});
+for(const type of ['pointerup','pointercancel','lostpointercapture'])rescueButton.addEventListener(type,()=>{
+ if(rescueHolding){rescueHolding=false;send({type:'rescue',on:false})}});
+for(const type of ['touchstart','touchmove','touchend'])rescueButton.addEventListener(type,event=>event.stopPropagation(),{passive:true});
 const fireButton=$('#fire'),reloadButton=$('#reload');
 fireButton.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();shooting=true;fireOnce();fireButton.setPointerCapture(event.pointerId)});
 for(const type of ['pointerup','pointercancel','lostpointercapture'])fireButton.addEventListener(type,()=>shooting=false);
@@ -269,7 +321,7 @@ renderer.domElement.addEventListener('pointermove',event=>{
  lookPointer.x=event.clientX;lookPointer.y=event.clientY});
 for(const type of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(type,()=>lookPointer=null);
 addEventListener('keydown',event=>{keys[event.code]=true;if(event.code==='KeyR')reload();if(event.code==='Space'){event.preventDefault();jump()}});
-function jump(){if(room==='void'||vertical>0||!playing||inTransition)return;jumpVelocity=4.6;footstep(false,.5)}
+function jump(){if(room==='void'||vertical>0||!playing||inTransition||selfDown||overShown)return;jumpVelocity=4.6;footstep(false,.5)}
 addEventListener('keyup',event=>keys[event.code]=false);
 const jumpButton=$('#jump');
 if(jumpButton){
@@ -330,7 +382,7 @@ function handle(message){
   case 'waiting':clearInterval(window.choiceCountdown);showDialog('Ждём друга','Когда друг тоже прыгнет в бездну, вы спуститесь вместе.',[['Одному',()=>{modal.hidden=true;send({type:'lift-choice',choice:'solo'})}]]);break;
   case 'lift':{
    clearInterval(window.choiceCountdown);
-   sessionId=message.instance;n=message.n;selfSlot=message.slot;ownWeapon=message.own;spots=message.spots;ammo=message.ammo;reloadUntil=0;
+   sessionId=message.instance;n=message.n;coopMode=!!message.together;selfSlot=message.slot;ownWeapon=message.own;spots=message.spots;ammo=message.ammo;reloadUntil=0;
    if(maze){basement.remove(maze.group);maze=null}
    maze=createMaze(n);basement.add(maze.group);placeSpots(maze,spots);updatePuzzle(message.puzzle);
    setEquipped(null,false);monsterUpdated=0;monsterSleeping=false;monster.group.visible=false;
@@ -360,6 +412,32 @@ function handle(message){
   case 'monster-sleep':monsterSleeping=true;playSound('sleep');notify('Майкл упал. 15 секунд у вас есть.');break;
   case 'monster-wake':monsterSleeping=false;notify('Майкл встал.');break;
   case 'caught':pos.set(message.x,1.65,message.z);vertical=0;jumpVelocity=0;notify('Майкл поймал тебя. Ты у лифта.');playSound('caught');break;
+  case 'killed':playKill();break;
+  case 'downed':{
+   downedOthers.set(message.id,{name:message.name,x:message.x,z:message.z,until:message.until});
+   playKill();
+   showBanner(`${message.name} убит. У вас ${clockText(message.until-Date.now())}, чтобы его спасти.`);
+   break}
+  case 'you-downed':{
+   selfDown=true;downUntil=message.until;shooting=false;sprinting=false;move.x=0;move.y=0;
+   deadScreen.hidden=false;deadText.textContent=`Друг может спасти тебя. Осталось ${clockText(downUntil-Date.now())}`;
+   showBanner('Ты убит. Жди спасения — друг должен найти тебя и зажать «СПАСТИ».');
+   break}
+  case 'rescue':{
+   const progress=Number(message.progress)||0;
+   rescueBar.hidden=progress<=0;
+   rescueFill.style.width=`${Math.round(progress*100)}%`;
+   if(message.interrupted&&selfDown)deadText.textContent='Майкл стоит рядом. Друг должен отогнать его или усыпить.';
+   else if(message.interrupted)showBanner('Майкл рядом — держи дистанцию или стреляй, иначе он помешает.',3000);
+   break}
+  case 'revived':{
+   downedOthers.delete(message.id);rescueBar.hidden=true;rescueFill.style.width='0%';rescueHolding=false;
+   if(message.id===selfId){selfDown=false;deadScreen.hidden=true;notify('Тебя спасли!')}
+   else showBanner(`${message.name} снова на ногах.`);
+   break}
+  case 'over':{
+   overShown=true;overScreen.hidden=false;overText.textContent=message.reason||'Майкл победил.';
+   deadScreen.hidden=true;rescueButton.hidden=true;rescueBar.hidden=true;break}
   case 'enter-void':setRoom('void');break;
   case 'puzzle':{
    const hadWeapon=puzzle[ownWeapon];updatePuzzle(message.puzzle);
@@ -371,14 +449,14 @@ function handle(message){
   case 'move':{
    const p=others.get(message.id);if(!p)break;
    if(Math.hypot(message.x-p.target.x,message.z-p.target.z)>.002)p.lastMove=performance.now();
-   p.target.set(message.x,message.y||0,message.z);p.rotation=message.rotation;p.room=message.room||'main';p.instance=message.instance??null;p.running=!!message.running;
+   p.target.set(message.x,message.y||0,message.z);p.rotation=message.rotation;p.room=message.room||'main';p.instance=message.instance??null;p.running=!!message.running;p.down=!!message.down;
    p.group.visible=room!=='void'&&sameLocation(p);
    if(message.equipped!==undefined&&message.equipped!==p.equipped){p.equipped=message.equipped;equipOther(p,message.equipped)}
    break}
  }
 }
 $('#nickname').value=localStorage.getItem('deni-name')||'';
-$('#play').onclick=()=>{unlockAudio();connect()};
+$('#play').onclick=()=>{unlockAudio();unlockAudio_();connect()};
 $('#nickname').addEventListener('keydown',event=>{if(event.key==='Enter')connect()});
 $('#reconnect').onclick=()=>location.reload();
 
@@ -407,7 +485,7 @@ function updateGame(now,dt){
  let x=move.x+(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
  let y=move.y+(keys.KeyS||keys.ArrowDown?1:0)-(keys.KeyW||keys.ArrowUp?1:0);
  const length=Math.hypot(x,y);if(length>1){x/=length;y/=length}
- if(inTransition||!modal.hidden||!settings.hidden){x=0;y=0}
+ if(inTransition||!modal.hidden||!settings.hidden||selfDown||overShown){x=0;y=0}
  const running=(sprinting||keys.ShiftLeft||keys.ShiftRight)&&!exhausted&&stamina>0&&Math.hypot(x,y)>.1&&!inTransition&&modal.hidden&&settings.hidden;
  stamina=THREE.MathUtils.clamp(stamina+(running?-24:14)*dt,0,100);
  if(stamina<=0)exhausted=true;else if(stamina>=25)exhausted=false;
@@ -418,14 +496,18 @@ function updateGame(now,dt){
  if(room!=='basement'||walkable(nx,pos.z))pos.x=nx;
  if(room!=='basement'||walkable(pos.x,nz))pos.z=nz;
  if(now>portalReady&&!inTransition&&room==='main'&&pos.x>3.1&&pos.x<5.9&&pos.z<-5.0&&pos.z>-8)fall();
+ updateRescue();updateMonsterMusic();
  jumpVelocity-=12*dt;vertical=Math.max(0,vertical+jumpVelocity*dt);if(vertical===0)jumpVelocity=0;
  camera.position.copy(pos);camera.position.y+=vertical;
+ if(selfDown)camera.position.y=.55;
  camera.rotation.order='YXZ';camera.rotation.set(pitch,yaw,0);
+ if(selfDown||overShown){shooting=false;rescueHolding=false}
  if(shooting&&now-lastShot>115)fireOnce();
  if(now-lastSend>50&&socket?.readyState===WebSocket.OPEN){
   socket.send(JSON.stringify({type:'move',x:pos.x,z:pos.z,rotation:yaw,room,y:vertical,running}));lastSend=now}
  for(const p of others.values()){
   p.group.position.lerp(p.target,Math.min(1,dt*12));p.group.rotation.y=p.rotation;
+  const lying=p.down?1:0;p.group.rotation.z+=(lying*Math.PI/2.05-p.group.rotation.z)*Math.min(1,dt*6);p.group.position.y+=(lying*.45-p.group.position.y)*Math.min(1,dt*6);
   const moving=now-p.lastMove<220;
   animateCharacter(p.character,dt,moving,p.running);
   if(p.toolUseUntil>now&&p.heldModel)p.heldModel.rotation.x=-.6-Math.sin((p.toolUseUntil-now)/650*Math.PI)*.9;
@@ -454,4 +536,12 @@ function fall(){
  send({type:'fall'});
 }
 preloadCharacters();
+// Installable app: on Android this opens without the browser address bar.
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+let installPrompt=null;const installButton=$('#install-btn');
+addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;if(installButton)installButton.hidden=false});
+if(window.matchMedia('(display-mode: standalone)').matches&&installButton)installButton.hidden=true;
+installButton?.addEventListener('click',async()=>{
+ if(installPrompt){installPrompt.prompt();try{await installPrompt.userChoice}catch{}installPrompt=null;installButton.hidden=true;return}
+ $('#status').textContent='Открой меню браузера (⋮) → «Установить приложение» или «Добавить на главный экран».'});
 requestAnimationFrame(frame);

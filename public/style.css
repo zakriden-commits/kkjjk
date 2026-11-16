@@ -120,3 +120,25 @@ select{margin-bottom:14px;background-image:linear-gradient(45deg,transparent 50%
  background:radial-gradient(120% 120% at 50% 0,rgba(255,60,20,.22),rgba(0,0,0,.88));z-index:15}
 #lift-screen p{margin:0;font-size:11px;letter-spacing:.28em;color:#ffb08a}
 #voice-audio{display:none}
+
+#install-btn{border-color:rgba(255,120,60,.6)!important;background:linear-gradient(180deg,#ff7a45,#c62c0b)!important;color:#1a0703!important;font-weight:700}
+
+#rescue{position:absolute;left:50%;bottom:calc(300px + env(safe-area-inset-bottom));transform:translateX(-50%);
+ padding:16px 26px;border-radius:999px;border:1px solid rgba(140,255,180,.6);background:linear-gradient(180deg,#5ce08a,#128a45);
+ color:#05170c;font-size:14px;font-weight:700;letter-spacing:.08em;box-shadow:0 0 30px rgba(60,220,130,.45)}
+#rescue:active{transform:translateX(-50%) scale(.96)}
+#rescue-bar{position:absolute;left:50%;bottom:calc(360px + env(safe-area-inset-bottom));transform:translateX(-50%);
+ width:210px;height:10px;border-radius:6px;border:1px solid rgba(120,255,170,.5);background:rgba(10,30,18,.85);overflow:hidden}
+#rescue-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#5ce08a,#128a45);transition:width .1s linear}
+#banner{position:absolute;left:0;right:0;top:calc(96px + env(safe-area-inset-top));margin:0 auto;max-width:92%;
+ padding:14px 18px;border-radius:14px;border:1px solid var(--blood);background:rgba(48,6,4,.96);text-align:center;
+ font-size:14px;line-height:1.4;color:#ffd9c6;box-shadow:0 0 40px rgba(255,40,10,.45)}
+#dead{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+ background:radial-gradient(circle at 50% 50%,rgba(90,0,0,.35),rgba(8,2,2,.86));text-align:center;pointer-events:none}
+#dead strong{font-size:clamp(26px,8vw,52px);letter-spacing:.1em;color:#ff3b12;text-shadow:0 0 30px rgba(255,60,20,.7)}
+#dead span{font-size:14px;color:#ffbea6}
+#over{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+ background:rgba(8,2,2,.94);text-align:center;z-index:20}
+#over strong{font-size:clamp(24px,7vw,46px);color:#ff3b12;letter-spacing:.1em}
+#over span{font-size:14px;color:#ffbea6;max-width:80%}
+#over button{padding:12px 24px;border-radius:12px;border:0;background:var(--lava);color:#1a0703;font-weight:700}
