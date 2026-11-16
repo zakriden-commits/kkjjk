@@ -1,7 +1,7 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
-import { GRID, layout, MAZE_LIMIT, ENTRY, HAMMER, CROWBAR } from './public/layout.js';
+import { GRID, layout, MAZE_LIMIT, ENTRY, randomToolSpots, isSafeCell } from './public/layout.js';
 const app=express();app.use('/vendor/three',express.static('node_modules/three/build'));app.use(express.static('public'));
 let lastVisit=null;app.get('/api/history',(req,res)=>res.json({lastVisit}));
 const server=createServer(app),wss=new WebSocketServer({server}),players=new Map(),instances=new Map();let nextId=1,nextInstance=1,waiting=null;
@@ -10,7 +10,7 @@ const send=(socket,data)=>{if(socket?.readyState===1)socket.send(JSON.stringify(
 function broadcast(data,except){for(const c of wss.clients)if(c!==except)send(c,data)}
 function inInstance(id,data,except){for(const p of players.values())if(p.instance===id&&p.socket!==except)send(p.socket,data)}
 function publicPlayer(p){const {socket,status,choiceTimer,noiseUntil,noiseLoudUntil,...rest}=p;return rest}
-function startLift(ids){const instance=nextInstance++;instances.set(instance,{puzzle:freshPuzzle(),monster:{x:0,z:-12,rotation:0,target:null,until:0,patrol:null}});for(const id of ids){const p=players.get(id);if(p){clearTimeout(p.choiceTimer);p.status='lift';p.room='lift';p.instance=instance;send(p.socket,{type:'lift',together:ids.length>1,instance,puzzle:instances.get(instance).puzzle});broadcast({type:'move',...publicPlayer(p)},p.socket)}}if(ids.includes(waiting))waiting=null;}
+function startLift(ids){const instance=nextInstance++;instances.set(instance,{puzzle:freshPuzzle(),spots:randomToolSpots(),monster:{x:0,z:-12,rotation:0,target:null,until:0,patrol:null}});for(const id of ids){const p=players.get(id);if(p){clearTimeout(p.choiceTimer);p.status='lift';p.room='lift';p.instance=instance;send(p.socket,{type:'lift',together:ids.length>1,instance,puzzle:instances.get(instance).puzzle,spots:instances.get(instance).spots});broadcast({type:'move',...publicPlayer(p)},p.socket)}}if(ids.includes(waiting))waiting=null;}
 function sameVoice(a,b){return a&&b&&a.id!==b.id&&((a.room==='main'&&b.room==='main')||(a.instance!==null&&a.instance===b.instance))}
 function voicePeers(p){return [...players.values()].filter(q=>q.voice&&sameVoice(p,q)).map(q=>q.id)}
 function refreshVoice(){for(const p of players.values())if(p.voice)send(p.socket,{type:'voice-peers',peers:voicePeers(p)})}
@@ -34,15 +34,15 @@ wss.on('connection',(socket,request)=>{socket.upgradeReqAgent=request.headers['u
   const p=players.get(id),session=instances.get(p.instance);if(!session||p.room!=='basement')return;const item=m.item==='hammer'||m.item==='crowbar'?m.item:null;if(item&&!session.puzzle[item])return;p.equipped=item;broadcast({type:'equip',id,item,instance:p.instance},socket);
  }else if(m.type==='interact'){
   const p=players.get(id),session=instances.get(p.instance);if(p.status!=='playing'||p.room!=='basement'||!session)return;const puzzle=session.puzzle;
-  const near=(x,z)=>Math.hypot(p.x-x,p.z-z)<1.8;let result='',used=null;
-  if(m.target==='hammer'&&near(HAMMER.x,HAMMER.z)&&!puzzle.hammer){puzzle.hammer=true;result='Молоток найден!'}
-  else if(m.target==='crowbar'&&near(CROWBAR.x,CROWBAR.z)&&!puzzle.crowbar){puzzle.crowbar=true;result='Гвоздодёр найден!'}
+  const near=(x,z)=>Math.hypot(p.x-x,p.z-z)<1.8;let result='',used=null,enterVoid=false;
+  if(m.target==='hammer'&&near(session.spots.hammer.x,session.spots.hammer.z)&&!puzzle.hammer){puzzle.hammer=true;result='Молоток найден!'}
+  else if(m.target==='crowbar'&&near(session.spots.crowbar.x,session.spots.crowbar.z)&&!puzzle.crowbar){puzzle.crowbar=true;result='Гвоздодёр найден!'}
   else if(m.target==='door'&&near(0,-1)){
    if(!puzzle.nails){if(puzzle.crowbar&&p.equipped==='crowbar'){puzzle.nails=true;result='Гвозди вытащены.';used='crowbar'}else result='Возьми гвоздодёр и выбери его в инвентаре.'}
    else if(!puzzle.boards){if(puzzle.hammer&&p.equipped==='hammer'){puzzle.boards=true;result='Доски сняты.';used='hammer'}else result='Возьми молоток и выбери его в инвентаре.'}
-   else if(!puzzle.door){puzzle.door=true;result='Дверь открыта. Нажми ещё раз, чтобы войти.';used='door'}else {p.room='dark';p.x=0;p.z=4;send(socket,{type:'enter-dark'});broadcast({type:'move',...publicPlayer(p)},socket)}
+   else if(!puzzle.door){puzzle.door=true;result='Дверь открыта.';used='door';enterVoid=true}else {p.room='void';p.x=0;p.z=0;send(socket,{type:'enter-void'});broadcast({type:'move',...publicPlayer(p)},socket)}
   }
-  if(result){inInstance(p.instance,{type:'puzzle',puzzle});send(socket,{type:'message',text:result});if(used){p.noiseUntil=Date.now()+5000;p.noiseLoudUntil=Date.now()+5000;inInstance(p.instance,{type:'use-tool',id,item:used})}}
+  if(result){inInstance(p.instance,{type:'puzzle',puzzle});send(socket,{type:'message',text:result});if(used){p.noiseUntil=Date.now()+5000;p.noiseLoudUntil=Date.now()+5000;inInstance(p.instance,{type:'use-tool',id,item:used})}if(enterVoid){p.room='void';p.x=0;p.z=0;send(socket,{type:'enter-void'});broadcast({type:'move',...publicPlayer(p)},socket)}}
  }else if(m.type==='voice-ready'){
   const p=players.get(id);p.voice=!!m.enabled;refreshVoice();
  }else if(m.type==='voice-signal'){
@@ -53,11 +53,11 @@ wss.on('connection',(socket,request)=>{socket.upgradeReqAgent=request.headers['u
 const cells=layout(),n=GRID,dirs=[[0,-1],[1,0],[0,1],[-1,0]],half=(n-1)/2;
 function cellAt(x,z){return Math.max(0,Math.min(n-1,Math.round(x/4+half)))+n*Math.max(0,Math.min(n-1,Math.round(z/4+half)))}
 function center(i){return {x:(i%n-half)*4,z:(Math.floor(i/n)-half)*4}}
-function nextStep(start,end){if(start===end)return end;const queue=[start],prev=new Map([[start,-1]]);for(let k=0;k<queue.length;k++){const i=queue[k],x=i%n,z=Math.floor(i/n);for(let d=0;d<4;d++)if(cells[i].open[d]){const j=(z+dirs[d][1])*n+x+dirs[d][0];if(!prev.has(j)){prev.set(j,i);if(j===end){let cur=j;while(prev.get(cur)!==start&&prev.get(cur)!==-1)cur=prev.get(cur);return cur}queue.push(j)}}}return start}
-setInterval(()=>{const now=Date.now();for(const [id,session] of instances){const m=session.monster,targets=[...players.values()].filter(p=>p.instance===id&&p.room==='basement'&&p.status==='playing'&&cellAt(p.x,p.z)!==cellAt(ENTRY.x,ENTRY.z));if(!targets.length)continue;
+function nextStep(start,end){if(start===end)return end;const queue=[start],prev=new Map([[start,-1]]);for(let k=0;k<queue.length;k++){const i=queue[k],x=i%n,z=Math.floor(i/n);for(let d=0;d<4;d++)if(cells[i].open[d]){const j=(z+dirs[d][1])*n+x+dirs[d][0];if(!prev.has(j)&&!isSafeCell(j)){prev.set(j,i);if(j===end){let cur=j;while(prev.get(cur)!==start&&prev.get(cur)!==-1)cur=prev.get(cur);return cur}queue.push(j)}}}return null}
+setInterval(()=>{const now=Date.now();for(const [id,session] of instances){const m=session.monster,targets=[...players.values()].filter(p=>p.instance===id&&p.room==='basement'&&p.status==='playing'&&!isSafeCell(cellAt(p.x,p.z)));if(!targets.length)continue;
  let heard=null,best=Infinity;for(const p of targets){const dist=Math.hypot(p.x-m.x,p.z-m.z),range=p.noiseLoudUntil>now?14:p.noiseUntil>now?(p.running?12:6):2.3;if(dist<range&&dist<best){best=dist;heard=p}}
  if(heard){m.target={x:heard.x,z:heard.z};m.until=now+4500}if(now>m.until)m.target=null;
- if(!m.target&&(!m.patrol||Math.hypot(m.x-m.patrol.x,m.z-m.patrol.z)<.5)){const i=Math.floor(Math.random()*(n*n-n));m.patrol=center(i)}const dest=m.target||m.patrol;if(!m.waypoint||Math.hypot(m.x-m.waypoint.x,m.z-m.waypoint.z)<.06){const start=cellAt(m.x,m.z),end=cellAt(dest.x,dest.z),step=nextStep(start,end);m.waypoint=step===start?{...dest}:center(step);if(cellAt(m.waypoint.x,m.waypoint.z)===cellAt(ENTRY.x,ENTRY.z))m.waypoint=center(start)}const point=m.waypoint;let dx=point.x-m.x,dz=point.z-m.z,dist=Math.hypot(dx,dz);if(dist>.05){const speed=m.target?4.3:1.7,amount=Math.min(dist,speed*.1);m.x+=dx/dist*amount;m.z+=dz/dist*amount;m.rotation=Math.atan2(-dx,-dz)}
+ if(!m.target&&(!m.patrol||Math.hypot(m.x-m.patrol.x,m.z-m.patrol.z)<.5)){let i;do{i=Math.floor(Math.random()*(n*n))}while(isSafeCell(i));m.patrol=center(i)}const dest=m.target||m.patrol;if(!m.waypoint||Math.hypot(m.x-m.waypoint.x,m.z-m.waypoint.z)<.06){const start=cellAt(m.x,m.z),end=cellAt(dest.x,dest.z),step=nextStep(start,end);if(step===null){m.target=null;m.patrol=null;m.waypoint=center(start)}else m.waypoint=step===start?{...dest}:center(step);if(isSafeCell(cellAt(m.waypoint.x,m.waypoint.z)))m.waypoint=center(start)}const point=m.waypoint;let dx=point.x-m.x,dz=point.z-m.z,dist=Math.hypot(dx,dz);if(dist>.05){const speed=m.target?4.3:1.7,amount=Math.min(dist,speed*.1);m.x+=dx/dist*amount;m.z+=dz/dist*amount;m.rotation=Math.atan2(-dx,-dz)}
  for(const p of targets)if(Math.hypot(p.x-m.x,p.z-m.z)<.8){p.x=p.id%2?-.55:.55;p.z=ENTRY.z;p.noiseUntil=0;send(p.socket,{type:'caught',x:p.x,z:p.z});broadcast({type:'move',...publicPlayer(p)},p.socket);m.target=null;m.until=0;break}
  inInstance(id,{type:'monster',x:m.x,z:m.z,rotation:m.rotation,chasing:!!m.target});
 }},100);
