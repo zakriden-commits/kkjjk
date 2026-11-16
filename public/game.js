@@ -70,7 +70,7 @@ let vertical=0,jumpVelocity=0,activeTarget=null,lastLiftStart=0;
 let yaw=0,pitch=0,pos=new THREE.Vector3(4.5,1.65,0),keys={},move={x:0,y:0};
 const others=new Map();
 const audio={context:null};
-const voice=createVoice(send,notify);
+const voice=createVoice(send,notify,payload=>{try{if(socket?.readyState===WebSocket.OPEN)socket.send(payload)}catch{}});
 
 // ---------------------------------------------------------------- audio
 function unlockAudio(){try{const C=window.AudioContext||window.webkitAudioContext;if(C){audio.context=audio.context||new C();audio.context.resume()}}catch{}}
@@ -100,7 +100,8 @@ function playSound(kind){if(kind==='door')tone(120,.3,'square',.07,60);else if(k
 
 // ---------------------------------------------------------------- UI helpers
 const action=$('#action'),modal=$('#modal'),settings=$('#settings');
-function notify(text){const node=$('#place-notice');node.textContent=text;node.hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>node.hidden=true,4200)}
+function notify(text){const node=$('#place-notice');node.textContent=text;node.hidden=false;if(!playing){const status=$('#status');if(status)status.textContent=text}
+ clearTimeout(notify.timer);notify.timer=setTimeout(()=>{node.hidden=true},4200)}
 function showDialog(title,text,buttons){$('#modal-title').textContent=title;$('#modal-text').textContent=text;const container=$('#modal-buttons');container.replaceChildren();
  for(const [caption,fn] of buttons){const button=document.createElement('button');button.textContent=caption;button.onclick=fn;container.append(button)}modal.hidden=false}
 function send(data){if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(data))}
@@ -153,7 +154,9 @@ function setRoom(next){
  torch.intensity=room==='basement'?110:0;
  torchFill.intensity=room==='basement'?4:0;
  pitLight.intensity=room==='main'?16:0;
- $('#ammo').hidden=room!=='basement'||!ownWeapon;
+ $('#inventory').hidden=room!=='basement';
+ $('#mic').hidden=!voice.enabled;
+ $('#ammo').hidden=room!=='basement'||!puzzle[ownWeapon];
  $('#fire').hidden=room!=='basement';
  pos.set(room==='basement'?(selfSlot?-.7:.7):4.5,1.65,room==='basement'?(n-1)/2*4-1:room==='main'?0:2);
  portalReady=performance.now()+1600;
@@ -192,7 +195,7 @@ function equipOther(p,item){
   if(item){const model=makeHeldModel(item);model.scale.setScalar(.85);p.heldModel=model;p.character.hand?.add(model)}}}
 function updateAction(){
  if(room!=='basement'||inTransition){action.hidden=true;return}
- const near=(x,z)=>Math.hypot(pos.x-x,pos.z-z)<2.1;
+ const near=(x,z)=>Math.hypot(pos.x-x,pos.z-z)<2.6;
  const spot=name=>spots.find(s=>s.name===name);
  const available=name=>spot(name)&&!puzzle[name]&&near(spot(name).x,spot(name).z);
  activeTarget=available('hammer')?'hammer':available('crowbar')?'crowbar':
@@ -265,9 +268,15 @@ renderer.domElement.addEventListener('pointermove',event=>{
  yaw-=(event.clientX-lookPointer.x)*.0045;pitch=THREE.MathUtils.clamp(pitch-(event.clientY-lookPointer.y)*.0045,-1.2,1.2);
  lookPointer.x=event.clientX;lookPointer.y=event.clientY});
 for(const type of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(type,()=>lookPointer=null);
-addEventListener('keydown',event=>{keys[event.code]=true;if(event.code==='KeyR')reload();if(event.code==='Space'&&vertical===0){jumpVelocity=4.4}});
+addEventListener('keydown',event=>{keys[event.code]=true;if(event.code==='KeyR')reload();if(event.code==='Space'){event.preventDefault();jump()}});
+function jump(){if(room==='void'||vertical>0||!playing||inTransition)return;jumpVelocity=4.6;footstep(false,.5)}
 addEventListener('keyup',event=>keys[event.code]=false);
-addEventListener('blur',()=>{keys={};move={x:0,y:0};shooting=false});
+const jumpButton=$('#jump');
+if(jumpButton){
+ jumpButton.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();jump()});
+ for(const type of ['touchstart','touchmove','touchend'])jumpButton.addEventListener(type,event=>event.stopPropagation(),{passive:true});
+}
+addEventListener('blur',()=>{keys={};move={x:0,y:0};shooting=false;sprinting=false});
 const sprintButton=$('#sprint');
 sprintButton.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();sprinting=true;sprintButton.setPointerCapture(event.pointerId)});
 for(const type of ['pointerup','pointercancel','lostpointercapture'])sprintButton.addEventListener(type,()=>sprinting=false);
@@ -297,16 +306,19 @@ function connect(){
  button.disabled=true;$('#status').textContent='ПОДКЛЮЧАЕМСЯ...';
  socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
  socket.onopen=()=>socket.send(JSON.stringify({type:'join',name,skin:$('#skin').value}));
- socket.onmessage=event=>{let message;try{message=JSON.parse(event.data)}catch{return}handle(message)};
+ socket.binaryType='arraybuffer';
+ socket.onmessage=event=>{
+  if(typeof event.data!=='string'){voice.play(event.data);return}
+  let message;try{message=JSON.parse(event.data)}catch{return}handle(message)};
  socket.onclose=()=>{voice.stop();button.disabled=false;shooting=false;
   if(playing){playing=false;$('#connection').hidden=false}else $('#status').textContent='НЕ УДАЛОСЬ ПОДКЛЮЧИТЬСЯ. ПОПРОБУЙ ЕЩЁ РАЗ.'}
 }
 function handle(message){
  switch(message.type){
   case 'welcome':
-   selfId=message.id;voice.setId(message.id);yaw=Math.PI;pos.set(message.player.x,1.65,message.player.z);
+   selfId=message.id;voice.setId(message.id);$('#mic').hidden=!voice.enabled;yaw=Math.PI;pos.set(message.player.x,1.65,message.player.z);
    message.players.forEach(addPlayer);playing=true;updateCount();
-   $('#stamina').hidden=false;$('#sprint').hidden=false;$('#lobby').style.display='none';$('#hud').hidden=false;setRoom('main');
+   $('#stamina').hidden=false;$('#sprint').hidden=false;$('#jump').hidden=false;$('#lobby').style.display='none';$('#hud').hidden=false;setRoom('main');
    break;
   case 'choice':{
    let seconds=15;
@@ -349,7 +361,10 @@ function handle(message){
   case 'monster-wake':monsterSleeping=false;notify('Майкл встал.');break;
   case 'caught':pos.set(message.x,1.65,message.z);vertical=0;jumpVelocity=0;notify('Майкл поймал тебя. Ты у лифта.');playSound('caught');break;
   case 'enter-void':setRoom('void');break;
-  case 'puzzle':updatePuzzle(message.puzzle);break;
+  case 'puzzle':{
+   const hadWeapon=puzzle[ownWeapon];updatePuzzle(message.puzzle);
+   if(ownWeapon&&puzzle[ownWeapon]&&!hadWeapon){setEquipped(ownWeapon);notify('Оружие у тебя в руках. Стреляй кнопкой ОГОНЬ.')}
+   break}
   case 'message':notify(message.text);break;
   case 'join':addPlayer(message.player);break;
   case 'leave':{const p=others.get(message.id);if(p){scene.remove(p.group);others.delete(message.id);updateCount()}break}
@@ -393,7 +408,7 @@ function updateGame(now,dt){
  let y=move.y+(keys.KeyS||keys.ArrowDown?1:0)-(keys.KeyW||keys.ArrowUp?1:0);
  const length=Math.hypot(x,y);if(length>1){x/=length;y/=length}
  if(inTransition||!modal.hidden||!settings.hidden){x=0;y=0}
- const running=(sprinting||keys.ShiftLeft||keys.ShiftRight)&&!exhausted&&stamina>0&&Math.hypot(x,y)>.1&&!inTransition&&!modal.hidden;
+ const running=(sprinting||keys.ShiftLeft||keys.ShiftRight)&&!exhausted&&stamina>0&&Math.hypot(x,y)>.1&&!inTransition&&modal.hidden&&settings.hidden;
  stamina=THREE.MathUtils.clamp(stamina+(running?-24:14)*dt,0,100);
  if(stamina<=0)exhausted=true;else if(stamina>=25)exhausted=false;
  $('#stamina-value').textContent=Math.round(stamina);$('#stamina-fill').style.width=`${stamina}%`;

@@ -68,10 +68,21 @@ function stepTowards(n,cells,start,end,blocked){if(start===end)return end;const 
 
 wss.on('connection',(socket,request)=>{
  const agent=request.headers['user-agent']||'',id=nextId++;
- socket.on('message',raw=>{
+ socket.on('message',(raw,isBinary)=>{
+  if(isBinary){
+   // Voice goes through the same socket: it survives mobile NATs where peer to peer fails.
+   const p=players.get(id);if(!p||!p.voice)return;
+   const frame=Buffer.isBuffer(raw)?raw:Buffer.from(raw);
+   if(!frame.length||frame.length>6000)return;
+   const now=Date.now();
+   if(now>p.audioStamp){p.audioStamp=now;p.audioBytes=0}
+   p.audioBytes+=frame.length;
+   if(p.audioBytes>96000)return;
+   for(const q of players.values())if(q!==p&&q.voice&&sameVoice(p,q)&&q.socket.readyState===1)q.socket.send(frame,{binary:true});
+   return}
   if(raw.length>16000)return;let m;try{m=JSON.parse(raw.toString())}catch{return}if(!m||typeof m!=='object')return;
   if(m.type==='join'&&!players.has(id)){
-   const a=Math.random()*Math.PI*2,p={id,socket,status:'playing',name:String(m.name||'Игрок').trim().slice(0,20)||'Игрок',skin:m.skin==='batman'?'batman':'deadpool',room:'main',instance:null,slot:0,x:Math.cos(a)*2,z:Math.sin(a)*2,rotation:0,y:0,equipped:null,voice:false,noiseUntil:0,noiseLoudUntil:0,ammo:MAG,reloadUntil:0};
+   const a=Math.random()*Math.PI*2,p={id,socket,status:'playing',name:String(m.name||'Игрок').trim().slice(0,20)||'Игрок',skin:m.skin==='batman'?'batman':'deadpool',room:'main',instance:null,slot:0,x:Math.cos(a)*2,z:Math.sin(a)*2,rotation:0,y:0,equipped:null,voice:false,audioBytes:0,audioStamp:0,noiseUntil:0,noiseLoudUntil:0,ammo:MAG,reloadUntil:0};
    players.set(id,p);const ua=String(agent);
    lastVisit={device:/iPhone|iPad/i.test(ua)?'iPhone / iPad':/Android/i.test(ua)?'Android':/Windows/i.test(ua)?'Windows':/Macintosh/i.test(ua)?'Mac':'другое устройство',time:new Date().toISOString()};
    send(socket,{type:'welcome',id,player:publicPlayer(p),players:[...players.values()].filter(q=>q.id!==id).map(publicPlayer),puzzle:freshPuzzle()});
