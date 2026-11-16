@@ -1,28 +1,76 @@
 import { createMonster, animateMonster } from './monster.js';
-import { makeTool } from './tools.js';
+import { makeTool, makeWeapon } from './tools.js';
 import { createVoice } from './voice.js';
 import { createLift } from './lift.js';
-import { createMaze, updateMaze, placeTools, canWalk, MAZE_LIMIT, ENTRY, DOOR } from './maze.js';
-import { createAvatar, animateAvatar } from './avatars.js';
+import { createMaze, placeSpots, updateMaze, canWalk, isSafe, limitFor } from './maze.js';
+import { createCharacter, animateCharacter, preloadCharacters } from './characters.js';
 import * as THREE from 'three';
-const scene=new THREE.Scene();scene.background=new THREE.Color(0xe8dca1);scene.fog=new THREE.Fog(0xe8dca1,12,32);const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,60),renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;document.querySelector('#game').append(renderer.domElement);const ambient=new THREE.HemisphereLight(0xfff9cf,0x9d844b,2);scene.add(ambient);const light=new THREE.DirectionalLight(0xfff5c9,1.2);light.position.set(2,8,4);scene.add(light);const mainRoom=new THREE.Group(),basement=new THREE.Group();scene.add(mainRoom,basement);let buildRoom=mainRoom;const mat=color=>new THREE.MeshStandardMaterial({color,roughness:1});function box(w,h,d,x,y,z,color){const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(color));mesh.position.set(x,y,z);buildRoom.add(mesh)}box(18,.2,12,0,-.1,3,0xc8b963);box(12,.2,6,-3,-.1,-6,0xc8b963);box(3,.2,6,7.5,-.1,-6,0xc8b963);box(3,.2,3,4.5,-.1,-4.5,0xc8b963);box(18,.2,18,0,6.1,0,0xe0d18b);box(18,6,.2,0,3,-9,0xe4d27c);box(18,6,.2,0,3,9,0xe3d17a);box(.2,6,18,-9,3,0,0xd8c472);box(.2,6,18,9,3,0,0xddca78);for(let i=-8;i<=8;i+=2){if(i>3&&i<6)box(.025,.01,15,i,.005,1.5,0xbdae5e);else box(.025,.01,18,i,.005,0,0xbdae5e);if(i< -6){box(12,.01,.025,-3,.006,i,0xbdae5e);box(3,.01,.025,7.5,.006,i,0xbdae5e)}else box(18,.01,.025,0,.006,i,0xbdae5e)}for(let i=-6;i<=6;i+=4){box(.06,5.8,.04,i,3,-8.87,0xd4c16e);box(.06,5.8,.04,i,3,8.87,0xd4c16e)}box(18,.13,.12,0,.28,-8.85,0xc8b764);box(18,.13,.12,0,.28,8.85,0xc8b764);box(.12,.13,18,-8.85,.28,0,0xc8b764);box(.12,.13,18,8.85,.28,0,0xc8b764);for(const x of [-5,5])for(const z of [-5,5])box(2.2,.03,1.1,x,5.98,z,0xfff5c8);
-// A dark opening in the floor leads to an abandoned lower level.
-box(3,.08,3,4.5,-1.5,-7.5,0x121316);box(3.25,.12,.16,4.5,.08,-5.98,0x948341);box(.16,.12,3,2.98,.08,-7.5,0x948341);box(.16,.12,3,6.02,.08,-7.5,0x948341);
-const maze=createMaze();basement.add(maze.group);basement.visible=false;const monster=createMonster();basement.add(monster.group);monster.group.visible=false;const monsterTarget=new THREE.Vector3();let monsterUpdated=0,monsterRotation=0;
-const darkRoom=new THREE.Group();scene.add(darkRoom);darkRoom.visible=false;buildRoom=darkRoom;box(18,.2,18,0,-.1,0,0x2a2c29);box(18,.2,18,0,4.1,0,0x252926);box(18,4,.2,0,2,-9,0x343a35);box(18,4,.2,0,2,9,0x343a35);box(.2,4,18,-9,2,0,0x313731);box(.2,4,18,9,2,0,0x313731);for(const x of [-5,5])box(.6,4,.6,x,2,0,0x262b28);const darkLight=new THREE.PointLight(0x8a9d86,8,14);darkLight.position.set(0,3,0);darkRoom.add(darkLight);const lift3d=createLift();let liftStarted=0,stamina=100,sprinting=false,exhausted=false,selfId=0;
-scene.add(camera);const held=new THREE.Group();camera.add(held);held.position.set(.38,-.58,-.85);let equipped=null,toolUseUntil=0;let sessionId=null,toolSpots=null,monsterChasing=false;let room='main',portalReady=0,inTransition=false,vertical=0,jumpVelocity=0,puzzle={hammer:false,crowbar:false,nails:false,boards:false,door:false},activeTarget=null;
-const action=document.querySelector('#action'),modal=document.querySelector('#modal');const voice=createVoice(send,notify);const settings=document.querySelector('#settings');document.querySelectorAll('.settings-open').forEach(b=>b.onclick=()=>settings.hidden=false);document.querySelector('#settings-close').onclick=()=>settings.hidden=true;document.querySelector('#history-btn').onclick=async()=>{try{const r=await fetch('/api/history');const data=await r.json();const text=data.lastVisit?`${data.lastVisit.device} · ${new Date(data.lastVisit.time).toLocaleString('ru-RU')}`:'Пока никто не заходил или сервер недавно перезапустился.';showDialog('История',text,[['Закрыть',()=>modal.hidden=true]])}catch{showDialog('История','Не удалось загрузить историю.',[['Закрыть',()=>modal.hidden=true]])}};
-function notify(text){const n=document.querySelector('#place-notice');n.textContent=text;n.hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>n.hidden=true,4000)}
-function showDialog(title,text,buttons){document.querySelector('#modal-title').textContent=title;document.querySelector('#modal-text').textContent=text;const container=document.querySelector('#modal-buttons');container.replaceChildren();for(const [caption,fn] of buttons){const b=document.createElement('button');b.textContent=caption;b.onclick=fn;container.append(b)}modal.hidden=false}
-function send(data){if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(data))}
-function fall(){inTransition=true;move={x:0,y:0};keys={};room='lift';for(const p of others.values())p.group.visible=false;send({type:'fall'})}
-let audioContext;function unlockAudio(){try{const C=window.AudioContext||window.webkitAudioContext;if(C){audioContext=audioContext||new C();audioContext.resume()}}catch{}}function soundLift(){try{const C=window.AudioContext||window.webkitAudioContext;const context=audioContext||new C();audioContext=context;context.resume();const t=context.currentTime;
- const motor=context.createOscillator(),motorGain=context.createGain();motor.type='triangle';motor.frequency.setValueAtTime(68,t);motor.frequency.linearRampToValueAtTime(48,t+3);motorGain.gain.setValueAtTime(.055,t);motorGain.gain.linearRampToValueAtTime(0,t+3.3);motor.connect(motorGain).connect(context.destination);motor.start(t);motor.stop(t+3.4);
- const noiseBuffer=context.createBuffer(1,context.sampleRate*2,context.sampleRate),data=noiseBuffer.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=Math.random()*2-1;const noise=context.createBufferSource(),filter=context.createBiquadFilter(),gain=context.createGain();noise.buffer=noiseBuffer;filter.type='lowpass';filter.frequency.value=600;gain.gain.setValueAtTime(0,t+3.2);gain.gain.linearRampToValueAtTime(.035,t+3.5);gain.gain.linearRampToValueAtTime(0,t+5.2);noise.connect(filter).connect(gain).connect(context.destination);noise.start(t+3.2);
- for(const [delay,freq] of [[3.1,880],[3.35,1108]]){const bell=context.createOscillator(),g=context.createGain();bell.type='sine';bell.frequency.value=freq;g.gain.setValueAtTime(.08,t+delay);g.gain.exponentialRampToValueAtTime(.0001,t+delay+.6);bell.connect(g).connect(context.destination);bell.start(t+delay);bell.stop(t+delay+.65)}
- }catch{}}
-let stepNoise,stepPan=1;
-function footstep(running=false,volume=1){try{if(!audioContext||audioContext.state!=='running')return;const ctx=audioContext,t=ctx.currentTime;
+
+const WEAPONS=['akA','akB'],WEAPON_LABEL={akA:'Красный АК-47',akB:'Синий АК-47'},MAG=30;
+const $=selector=>document.querySelector(selector);
+
+// ---------------------------------------------------------------- renderer
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x120d0c);
+scene.fog=new THREE.Fog(0x120d0c,10,30);
+const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,80);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth,innerHeight);
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+$('#game').append(renderer.domElement);
+const ambient=new THREE.HemisphereLight(0xff8a5c,0x140707,1.4);
+scene.add(ambient);
+const light=new THREE.DirectionalLight(0xff9a6a,1.1);
+light.position.set(3,9,5);
+scene.add(light);
+
+// ---------------------------------------------------------------- rooms
+const mainRoom=new THREE.Group(),basement=new THREE.Group(),voidRoom=new THREE.Group();
+scene.add(mainRoom,basement,voidRoom);
+voidRoom.visible=false;
+const mat=color=>new THREE.MeshStandardMaterial({color,roughness:.95});
+function box(group,w,h,d,x,y,z,color){const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(color));mesh.position.set(x,y,z);group.add(mesh);return mesh}
+box(mainRoom,18,.2,18,0,-.1,0,0x1d1512);box(mainRoom,18,.2,18,0,5.6,0,0x241a15);
+box(mainRoom,18,5.6,.2,0,2.7,-9,0x2a1d17);box(mainRoom,18,5.6,.2,0,2.7,9,0x2a1d17);
+box(mainRoom,.2,5.6,18,-9,2.7,0,0x281b16);box(mainRoom,.2,5.6,18,9,2.7,0,0x281b16);
+for(const x of [-5.6,5.6])box(mainRoom,.5,5.6,.5,x,2.7,-9,0x1b1310);
+// Glowing pit that leads downstairs.
+box(mainRoom,3.1,.1,3.1,4.5,-1.4,-6.5,0x090504);
+const pitLight=new THREE.PointLight(0xff3d12,16,10);
+pitLight.position.set(4.5,.4,-6.5);mainRoom.add(pitLight);
+box(mainRoom,3.3,.14,.16,4.5,.06,-4.95,0x7d2a14);box(mainRoom,.16,.14,3.3,2.87,.06,-6.5,0x7d2a14);
+box(mainRoom,.16,.14,3.3,6.13,.06,-6.5,0x7d2a14);box(mainRoom,3.3,.14,.16,4.5,.06,-8.05,0x7d2a14);
+const mainLight=new THREE.PointLight(0xff5426,10,20);mainLight.position.set(0,4,3);mainRoom.add(mainLight);
+
+const voidWall=new THREE.MeshStandardMaterial({color:0x0a0706,roughness:1});
+voidRoom.add(new THREE.Mesh(new THREE.BoxGeometry(40,.2,40),voidWall)).position.y=-.1;
+const voidLight=new THREE.PointLight(0xff4a1f,4,16);voidLight.position.set(0,2.4,3);voidRoom.add(voidLight);
+
+// ---------------------------------------------------------------- monsters, lift, held items
+const monster=createMonster();basement.add(monster.group);monster.group.visible=false;
+const monsterTarget=new THREE.Vector3();
+let monsterUpdated=0,monsterRotation=0,monsterChasing=false,monsterSleeping=false;
+const lift3d=createLift();
+const held=new THREE.Group();camera.add(held);held.position.set(.34,-.52,-.72);
+let heldWeapon=null;
+const muzzle=new THREE.PointLight(0xffb066,0,6);muzzle.position.set(0,.05,-.9);camera.add(muzzle);
+
+// ---------------------------------------------------------------- state
+let socket=null,playing=false,selfId=0,selfSlot=0,ownWeapon='akA';
+let room='main',sessionId=null,n=11,maze=null,spots=[],puzzle={crowbar:false,hammer:false,akA:false,akB:false,nails:false,boards:false,door:false};
+let equipped=null,ammo=MAG,reloadUntil=0,shooting=false,lastShot=0;
+let stamina=100,sprinting=false,exhausted=false,toolUseUntil=0,inTransition=false,portalReady=0;
+let vertical=0,jumpVelocity=0,activeTarget=null,lastLiftStart=0;
+let yaw=0,pitch=0,pos=new THREE.Vector3(4.5,1.65,0),keys={},move={x:0,y:0};
+const others=new Map();
+const audio={context:null};
+const voice=createVoice(send,notify);
+
+// ---------------------------------------------------------------- audio
+function unlockAudio(){try{const C=window.AudioContext||window.webkitAudioContext;if(C){audio.context=audio.context||new C();audio.context.resume()}}catch{}}
+let stepNoise=null,stepPan=1;
+function footstep(running=false,volume=1){try{const ctx=audio.context;if(!ctx||ctx.state!=='running')return;const t=ctx.currentTime;
  if(!stepNoise){stepNoise=ctx.createBuffer(1,Math.floor(ctx.sampleRate*.4),ctx.sampleRate);const data=stepNoise.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.pow(1-i/data.length,3)}
  const src=ctx.createBufferSource();src.buffer=stepNoise;src.playbackRate.value=(running?.84:.94)+Math.random()*.18;
  const band=ctx.createBiquadFilter();band.type='bandpass';band.frequency.value=(running?760:1020)+Math.random()*240;band.Q.value=1.1;
@@ -32,23 +80,356 @@ function footstep(running=false,volume=1){try{if(!audioContext||audioContext.sta
  const pan=ctx.createStereoPanner?ctx.createStereoPanner():null;if(pan){pan.pan.value=stepPan*.16;stepPan*=-1}
  src.connect(band).connect(gain);if(pan){gain.connect(pan);thumpGain.connect(pan);pan.connect(ctx.destination)}else{gain.connect(ctx.destination);thumpGain.connect(ctx.destination)}
  src.start(t);src.stop(t+.4);thump.start(t);thump.stop(t+.16)}catch{}}
-function playSound(kind){try{if(!audioContext||audioContext.state!=='running')return;const t=audioContext.currentTime,osc=audioContext.createOscillator(),gain=audioContext.createGain();osc.type=kind==='step'?'triangle':kind==='caught'?'sawtooth':'square';const frequency=kind==='step'?85:kind==='door'?110:kind==='caught'?48:420;osc.frequency.setValueAtTime(frequency,t);osc.frequency.exponentialRampToValueAtTime(Math.max(35,frequency*.55),t+.12);gain.gain.setValueAtTime(kind==='step'?.025:.035,t);gain.gain.exponentialRampToValueAtTime(.0001,t+.18);osc.connect(gain).connect(audioContext.destination);osc.start(t);osc.stop(t+.2)}catch{}}
-function lift(together){modal.hidden=true;inTransition=true;const screen=document.querySelector('#lift-screen');screen.hidden=false;document.querySelector('#lift-text').textContent='Лифт спускается...';const friend=[...others.values()][0];lift3d.start(together,friend?.skin||'batman');liftStarted=performance.now();soundLift();setTimeout(()=>{document.querySelector('#lift-text').textContent='Двери открываются'},3200);setTimeout(()=>{screen.hidden=true;liftStarted=0;setRoom('basement');send({type:'lift-arrived'});inTransition=false},5500)}
-function setRoom(next){room=next;document.querySelector('#hud').classList.toggle('in-void',room==='void');mainRoom.visible=room==='main';basement.visible=room==='basement';darkRoom.visible=false;document.querySelector('#void-message').hidden=room!=='void';scene.background.set(room==='main'?0xe8dca1:room==='basement'?0x5d573d:0x080a09);scene.fog.color.copy(scene.background);scene.fog.near=room==='main'?12:room==='basement'?7:4;scene.fog.far=room==='main'?32:room==='basement'?18:17;ambient.intensity=room==='main'?2:room==='basement'?.57:.24;light.intensity=room==='main'?1.2:room==='basement'?.22:.08;pos.set(room==='basement'?(selfId%2?-.55:.55):0,1.65,room==='main'?4:room==='basement'?ENTRY.z:4);portalReady=performance.now()+1800;for(const p of others.values())p.group.visible=room!=='void'&&sameLocation(p);monster.group.visible=room==='basement'&&monsterUpdated>0;document.querySelector('#inventory').hidden=room!=='basement';document.querySelector('#stamina').hidden=false;document.querySelector('#sprint').hidden=false;if(room==='basement')notify('ЛАБИРИНТ · ПОДОЙДИ К ТАБЛИЧКЕ С ПРАВИЛАМИ');}
+function tone(frequency,duration,type='square',volume=.06,slideTo){try{const ctx=audio.context;if(!ctx||ctx.state!=='running')return;const t=ctx.currentTime,osc=ctx.createOscillator(),gain=ctx.createGain();
+ osc.type=type;osc.frequency.setValueAtTime(frequency,t);if(slideTo)osc.frequency.exponentialRampToValueAtTime(slideTo,t+duration);
+ gain.gain.setValueAtTime(volume,t);gain.gain.exponentialRampToValueAtTime(.0001,t+duration);osc.connect(gain).connect(ctx.destination);osc.start(t);osc.stop(t+duration+.02)}catch{}}
+function gunshot(distance=0){try{const ctx=audio.context;if(!ctx||ctx.state!=='running')return;const t=ctx.currentTime;
+ const noise=ctx.createBuffer(1,Math.floor(ctx.sampleRate*.22),ctx.sampleRate),data=noise.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.pow(1-i/data.length,4);
+ const src=ctx.createBufferSource();src.buffer=noise;const filter=ctx.createBiquadFilter();filter.type='lowpass';filter.frequency.value=2400;
+ const gain=ctx.createGain();gain.gain.setValueAtTime(.42*Math.max(.15,1-distance/30),t);gain.gain.exponentialRampToValueAtTime(.0001,t+.22);
+ src.connect(filter).connect(gain).connect(ctx.destination);src.start(t);
+ tone(90,.16,'sawtooth',.16*(1-distance/40||1),40)}catch{}}
+function reloadSound(){tone(320,.06,'square',.05);setTimeout(()=>tone(220,.07,'square',.05),220);setTimeout(()=>tone(440,.06,'square',.06),480)}
+function soundLift(){tone(66,3,'triangle',.05,48);setTimeout(()=>{tone(880,.5,'sine',.05);setTimeout(()=>tone(1108,.5,'sine',.05),240)},3300)}
+function playSound(kind){if(kind==='door')tone(120,.3,'square',.07,60);else if(kind==='caught')tone(58,.5,'sawtooth',.09,36);else if(kind==='tool')tone(300,.12,'square',.06,180);else if(kind==='sleep')tone(70,.9,'sine',.09,34)}
 
+// ---------------------------------------------------------------- UI helpers
+const action=$('#action'),modal=$('#modal'),settings=$('#settings');
+function notify(text){const node=$('#place-notice');node.textContent=text;node.hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>node.hidden=true,4200)}
+function showDialog(title,text,buttons){$('#modal-title').textContent=title;$('#modal-text').textContent=text;const container=$('#modal-buttons');container.replaceChildren();
+ for(const [caption,fn] of buttons){const button=document.createElement('button');button.textContent=caption;button.onclick=fn;container.append(button)}modal.hidden=false}
+function send(data){if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(data))}
+document.querySelectorAll('.settings-open').forEach(button=>button.onclick=()=>settings.hidden=false);
+$('#settings-close').onclick=()=>settings.hidden=true;
+$('#history-btn').onclick=async()=>{let text='Пока никто не заходил.';try{const data=await (await fetch('/api/history')).json();
+ if(data.lastVisit){const when=new Date(data.lastVisit.time).toLocaleString('ru-RU');text=`Последнее устройство: ${data.lastVisit.device}. Время входа: ${when}.`}}catch{}
+ showDialog('История устройств',text,[['Закрыть',()=>modal.hidden=true]])};
+fetch('/api/version').then(r=>r.json()).then(d=>$('#build-info').textContent='сборка '+d.build).catch(()=>$('#build-info').textContent='сборка неизвестна');
+
+// ---------------------------------------------------------------- lobby backdrop
+const lobbyScene=new THREE.Scene();
+lobbyScene.background=new THREE.Color(0x160a08);
+lobbyScene.fog=new THREE.Fog(0x160a08,7,26);
+const lobbyCamera=new THREE.PerspectiveCamera(66,innerWidth/innerHeight,.1,60);
+lobbyCamera.position.set(0,1.7,8);
+const lobbyMonster=createMonster();
+lobbyMonster.group.position.set(0,0,-2);
+lobbyScene.add(lobbyMonster.group);
+for(const side of [-1,1]){const wall=new THREE.Mesh(new THREE.BoxGeometry(.4,4,34),new THREE.MeshStandardMaterial({color:0x2b1a14,roughness:1}));wall.position.set(side*2.6,2,-4);lobbyScene.add(wall);
+ for(let z=-20;z<12;z+=4){const rib=new THREE.Mesh(new THREE.BoxGeometry(.2,3.8,.5),new THREE.MeshStandardMaterial({color:0x3a231a,roughness:.9}));rib.position.set(side*2.4,1.9,z);lobbyScene.add(rib)}}
+const lobbyFloor=new THREE.Mesh(new THREE.BoxGeometry(5.6,.2,34),new THREE.MeshStandardMaterial({color:0x1d1310,roughness:1}));lobbyFloor.position.set(0,-.1,-4);lobbyScene.add(lobbyFloor);
+const lobbyCeil=new THREE.Mesh(new THREE.BoxGeometry(5.6,.2,34),new THREE.MeshStandardMaterial({color:0x120b09,roughness:1}));lobbyCeil.position.set(0,3.7,-4);lobbyScene.add(lobbyCeil);
+const lobbyLamp=new THREE.PointLight(0xff4a1c,9,14);lobbyLamp.position.set(0,2.8,4);lobbyScene.add(lobbyLamp);
+const lobbyLamp2=new THREE.PointLight(0xff2f0e,10,16);lobbyLamp2.position.set(0,2.6,-8);lobbyScene.add(lobbyLamp2);
+const lobbyGlow=new THREE.Mesh(new THREE.PlaneGeometry(1.2,.4),new THREE.MeshBasicMaterial({color:0xff3a12}));
+lobbyGlow.position.set(0,3.2,-8);lobbyScene.add(lobbyGlow);
+let lobbyZ=-14,lobbyTime=0;
+
+// ---------------------------------------------------------------- lift + rooms
+function lift(together){
+ modal.hidden=true;inTransition=true;
+ const screen=$('#lift-screen');screen.hidden=false;$('#lift-text').textContent='Лифт спускается...';
+ const friend=[...others.values()][0];
+ lift3d.start(together,friend?.skin||'deadpool');
+ lastLiftStart=performance.now();soundLift();
+ setTimeout(()=>{$('#lift-text').textContent='Двери открываются'},3200);
+ setTimeout(()=>{screen.hidden=true;lastLiftStart=0;setRoom('basement');send({type:'lift-arrived'});inTransition=false},5500)}
+function setRoom(next){
+ room=next;
+ $('#hud').classList.toggle('in-void',room==='void');
+ mainRoom.visible=room==='main';basement.visible=room==='basement';voidRoom.visible=room==='void';
+ $('#void-message').hidden=room!=='void';
+ scene.background.set(room==='main'?0x140d0b:room==='basement'?0x0b0806:0x050303);
+ scene.fog.color.copy(scene.background);
+ scene.fog.near=room==='main'?8:room==='basement'?5:6;
+ scene.fog.far=room==='main'?27:room==='basement'?15:22;
+ ambient.intensity=room==='main'?1.35:room==='basement'?.42:.3;
+ light.intensity=room==='main'?1.0:room==='basement'?.14:.1;
+ pitLight.intensity=room==='main'?16:0;
+ $('#ammo').hidden=room!=='basement'||!ownWeapon;
+ $('#fire').hidden=room!=='basement';
+ pos.set(room==='basement'?(selfSlot?-.7:.7):4.5,1.65,room==='basement'?(n-1)/2*4-1:room==='main'?0:2);
+ portalReady=performance.now()+1600;
+ for(const p of others.values())p.group.visible=room!=='void'&&sameLocation(p);
+ monster.group.visible=room==='basement'&&monsterUpdated>0;
+ updateInventory();updateAction();
+}
 function sameLocation(p){return p.room===room&&(room==='main'||(sessionId!==null&&p.instance===sessionId))}
-function setEquipped(item,sendUpdate=true){equipped=item;held.clear();if(item){const hand=new THREE.Mesh(new THREE.CapsuleGeometry(.075,.22,5,12),new THREE.MeshStandardMaterial({color:0x54415e}));hand.position.set(.05,-.15,0);hand.rotation.z=-.3;held.add(hand);const tool=makeTool(item);tool.position.set(.08,-.12,-.08);tool.rotation.z=-.25;held.add(tool)}for(const name of ['hammer','crowbar'])document.querySelector(`#slot-${name}`).classList.toggle('selected',item===name);if(sendUpdate)send({type:'equip',item})}
-function equipOther(p,item){if(p.held)p.avatar.arms[1].remove(p.held);p.held=null;if(item){const t=makeTool(item);t.position.set(0,-.5,-.02);t.rotation.z=-.3;p.avatar.arms[1].add(t);p.held=t}}
-function updatePuzzle(p){puzzle=p;updateMaze(maze,p);for(const name of ['hammer','crowbar'])document.querySelector(`#slot-${name}`).disabled=!p[name]}
-for(const name of ['hammer','crowbar'])document.querySelector(`#slot-${name}`).onclick=()=>setEquipped(equipped===name?null:name);
 
-function walkable(x,z){return canWalk(maze.walls,x,z)&&(puzzle.door||!(Math.abs(x)<1.18&&Math.abs(z-DOOR.z)<.35))}function updateAction(){if(room!=='basement'||inTransition){action.hidden=true;return}const near=(x,z)=>Math.hypot(pos.x-x,pos.z-z)<1.7;activeTarget=near(-1,21.3)?'rules':toolSpots&&!puzzle.hammer&&near(toolSpots.hammer.x,toolSpots.hammer.z)?'hammer':toolSpots&&!puzzle.crowbar&&near(toolSpots.crowbar.x,toolSpots.crowbar.z)?'crowbar':near(0,-1.2)?'door':null;action.hidden=!activeTarget;action.textContent=({rules:'Прочитать правила',hammer:'Взять молоток',crowbar:'Взять гвоздодёр',door:'Осмотреть дверь'})[activeTarget]||''}
-action.onclick=()=>{if(activeTarget==='rules')showDialog('Правила лабиринта','Найдите молоток и гвоздодёр в разных частях лабиринта. Майкл слышит шаги и бег — особенно рядом с ним. Вернитесь к двери в центре: сначала вытащите четыре гвоздя гвоздодёром, затем снимите две доски молотком. Выбери нужный инструмент снизу, затем нажми на дверь. Найденные предметы общие только в вашем совместном прохождении. Ищи инструменты на полу, стенах и потолке. Зелёная зона у лифта безопасна: монстр туда не войдёт.',[['Понятно',()=>modal.hidden=true]]);else if(activeTarget)send({type:'interact',target:activeTarget})};
+// ---------------------------------------------------------------- inventory and actions
+function makeHeldModel(item){
+ if(!item)return null;
+ if(item==='hammer'||item==='crowbar'){const tool=makeTool(item);tool.rotation.z=-.35;tool.position.set(.02,-.1,-.05);return tool}
+ const weapon=makeWeapon(item==='akB'?0x1f4f9c:0x9c2b1c);weapon.rotation.y=-.1;weapon.position.set(.02,-.06,-.18);return weapon}
+function setEquipped(item,notifyServer=true){
+ equipped=item;
+ held.clear();heldWeapon=makeHeldModel(item);
+ if(heldWeapon)held.add(heldWeapon);
+ for(const name of ['hammer','crowbar','akA','akB'])$(`#slot-${name}`)?.classList.toggle('selected',item===name);
+ if(notifyServer)send({type:'equip',item});
+}
+function updateInventory(){
+ const weaponName=ownWeapon;
+ for(const name of ['hammer','crowbar']){const button=$(`#slot-${name}`);button.disabled=!puzzle[name]}
+ for(const name of WEAPONS){const button=$(`#slot-${name}`);if(button)button.disabled=!puzzle[name]||name!==weaponName||sessionId===null}
+ const weaponButton=$('#slot-weapon');
+ weaponButton.disabled=!puzzle[weaponName]||sessionId===null;
+ weaponButton.querySelector('span').textContent=WEAPON_LABEL[weaponName]||'АК-47';
+ weaponButton.dataset.color=weaponName;
+ $('#ammo').textContent=`${ammo} / ${MAG}`;
+ $('#fire').hidden=room!=='basement'||!puzzle[weaponName];
+}
+function updatePuzzle(p){puzzle=p;if(maze)updateMaze(maze,p);updateInventory()}
+function equipOther(p,item){
+ if(p.character){if(p.heldModel)p.heldModel.parent?.remove(p.heldModel);p.heldModel=null;
+  if(item){const model=makeHeldModel(item);model.scale.setScalar(.85);p.heldModel=model;p.character.hand?.add(model)}}}
+function updateAction(){
+ if(room!=='basement'||inTransition){action.hidden=true;return}
+ const near=(x,z)=>Math.hypot(pos.x-x,pos.z-z)<2.1;
+ const spot=name=>spots.find(s=>s.name===name);
+ const available=name=>spot(name)&&!puzzle[name]&&near(spot(name).x,spot(name).z);
+ activeTarget=available('hammer')?'hammer':available('crowbar')?'crowbar':
+  WEAPONS.some(w=>available(w)&&w===ownWeapon)?ownWeapon:
+  WEAPONS.some(w=>available(w))?'other-weapon':
+  near(0,-1.2)?'door':near(-2.6,(n-1)/2*4+2-.14)?'rules':null;
+ action.hidden=!activeTarget;
+ action.textContent=({rules:'Правила',hammer:'Взять молоток',crowbar:'Взять гвоздодёр',akA:'Взять красный АК-47',akB:'Взять синий АК-47','other-weapon':'Чужое оружие',door:'Осмотреть дверь'})[activeTarget]||'';
+}
+action.onclick=()=>{
+ if(!activeTarget)return;
+ if(activeTarget==='rules'){
+  showDialog('Правила',sessionId&&spots.length>2
+   ?'Вдвоём нужно найти четыре предмета: гвоздодёр, молоток и по одному АК-47 каждому. Оружие игрока один нельзя взять игроку два. Дверь в центре открывается гвоздодёром и молотком, но пройти можно только когда найдены оба АК-47. Майкл слышит шум: 10 попаданий отправляют его в спячку на 15 секунд. Зелёный квадрат у лифта — безопасная зона.'
+   :'Один в лабиринте: найди гвоздодёр, молоток и свой АК-47. Открой центральную дверь гвоздодёром и молотком, затем войди. 10 попаданий из АК-47 усыпляют Майкла на 15 секунд. Зелёный квадрат у лифта — безопасная зона.',
+   [['Понятно',()=>modal.hidden=true]]);
+  return}
+ if(activeTarget==='other-weapon'){notify('Это оружие второго игрока. Возьми своё.');return}
+ send({type:'interact',target:activeTarget});
+ if(activeTarget==='akA'||activeTarget==='akB')toolUseUntil=performance.now()+0;
+};
+for(const name of ['hammer','crowbar','weapon']){
+ const button=$(`#slot-${name}`);
+ button.onclick=()=>{
+  const item=name==='weapon'?ownWeapon:name;
+  if(!puzzle[item])return;
+  setEquipped(equipped===item?null:item);
+ }}
 
-let socket,playing=false,yaw=0,pitch=0,pos=new THREE.Vector3(0,1.65,0),keys={},move={x:0,y:0};const others=new Map();function label(text){const c=document.createElement('canvas');c.width=512;c.height=128;const ctx=c.getContext('2d');ctx.font='bold 42px Arial';ctx.textAlign='center';ctx.fillStyle='#fffbea';ctx.shadowColor='#665c2b';ctx.shadowBlur=8;ctx.fillText(text,256,77);const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));sprite.scale.set(2.2,.55,1);sprite.position.y=2.25;return sprite}function addPlayer(p){if(others.has(p.id))return;const avatar=createAvatar(p.skin),group=avatar.group;group.add(label(p.name));group.position.set(p.x,p.y||0,p.z);group.rotation.y=p.rotation;group.visible=(p.room||'main')===room&&(room==='main'||p.instance===sessionId);scene.add(group);others.set(p.id,{group,avatar,target:new THREE.Vector3(p.x,p.y||0,p.z),rotation:p.rotation,skin:p.skin,room:p.room||'main',instance:p.instance,lastMove:0});if(p.equipped)equipOther(others.get(p.id),p.equipped);updateCount()}function updateCount(){document.querySelector('#count').textContent=others.size+1}
-function connect(){const name=document.querySelector('#nickname').value.trim()||'Игрок';localStorage.setItem('deni-name',name);const button=document.querySelector('#play');if(button.disabled)return;button.disabled=true;document.querySelector('#status').textContent='ПОДКЛЮЧАЕМСЯ...';socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);socket.onopen=()=>socket.send(JSON.stringify({type:'join',name,skin:document.querySelector('#skin').value}));socket.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}if(m.type==='welcome'){selfId=m.id;voice.setId(m.id);pos.set(m.player.x,1.65,m.player.z);m.players.forEach(addPlayer);updatePuzzle(m.puzzle);playing=true;document.querySelector('#stamina').hidden=false;document.querySelector('#sprint').hidden=false;document.querySelector('#lobby').style.display='none';document.querySelector('#hud').hidden=false;updateCount()}else if(m.type==='choice'){let seconds=15;showDialog('Куда дальше?','Продолжить одному или подождать друга у лифта? Осталось 15 секунд. Если не выбрать — лифт отправится одному.', [['Продолжить одному',()=>{modal.hidden=true;send({type:'lift-choice',choice:'solo'})}],['Подождать друга',()=>send({type:'lift-choice',choice:'together'})]]);clearInterval(window.choiceCountdown);window.choiceCountdown=setInterval(()=>{seconds--;if(seconds<=0||modal.hidden){clearInterval(window.choiceCountdown);return}document.querySelector('#modal-text').textContent=`Продолжить одному или подождать друга? Осталось ${seconds} сек. Без выбора лифт отправится одному.`},1000)}else if(m.type==='waiting'){clearInterval(window.choiceCountdown);showDialog('Ждём друга','Когда друг тоже прыгнет в бездну, вы спуститесь вместе.',[['Продолжить одному',()=>{modal.hidden=true;send({type:'lift-choice',choice:'solo'})}]])}else if(m.type==='lift'){clearInterval(window.choiceCountdown);sessionId=m.instance;toolSpots=m.spots;placeTools(maze,toolSpots);updatePuzzle(m.puzzle);setEquipped(null,false);monsterUpdated=0;lift(m.together)}else if(m.type==='voice-peers'){voice.sync(m.peers)}else if(m.type==='voice-signal'){voice.onSignal(m.from,m.data)}else if(m.type==='equip'){const p=others.get(m.id);if(p)equipOther(p,m.item)}else if(m.type==='use-tool'){if(m.id===selfId)toolUseUntil=performance.now()+650;else{const p=others.get(m.id);if(p)p.toolUseUntil=performance.now()+650}playSound(m.item==='door'?'door':'tool')}else if(m.type==='monster'){monsterTarget.set(m.x,0,m.z);if(!monsterUpdated)monster.group.position.copy(monsterTarget);monsterUpdated=performance.now();monsterRotation=m.rotation;monsterChasing=!!m.chasing;monster.group.visible=room==='basement'}else if(m.type==='caught'){pos.set(m.x,1.65,m.z);vertical=0;jumpVelocity=0;notify('Майкл поймал тебя. Ты вернулся в безопасную зону у лифта.');playSound('caught')}else if(m.type==='enter-void'){setRoom('void')}else if(m.type==='puzzle'){updatePuzzle(m.puzzle)}else if(m.type==='message'){notify(m.text)}else if(m.type==='join')addPlayer(m.player);else if(m.type==='leave'){const p=others.get(m.id);if(p){scene.remove(p.group);others.delete(m.id);updateCount()}}else if(m.type==='move'){const p=others.get(m.id);if(p){if(Math.hypot(m.x-p.target.x,m.z-p.target.z)>.002)p.lastMove=performance.now();p.target.set(m.x,m.y||0,m.z);p.rotation=m.rotation;p.running=!!m.running;p.room=m.room||'main';p.instance=m.instance;p.group.visible=room!=='void'&&sameLocation(p);if(m.equipped!==undefined&&m.equipped!==p.equipped){p.equipped=m.equipped;equipOther(p,m.equipped)}}}};socket.onclose=()=>{voice.stop();button.disabled=false;if(playing){playing=false;document.querySelector('#connection').hidden=false}else document.querySelector('#status').textContent='НЕ УДАЛОСЬ ПОДКЛЮЧИТЬСЯ. ПОПРОБУЙ ЕЩЁ РАЗ.'}}document.querySelector('#nickname').value=localStorage.getItem('deni-name')||'';document.querySelector('#play').onclick=()=>{unlockAudio();connect()};document.querySelector('#nickname').addEventListener('keydown',e=>{if(e.key==='Enter')connect()});document.querySelector('#reconnect').onclick=()=>location.reload();addEventListener('keydown',e=>keys[e.code]=true);addEventListener('keyup',e=>keys[e.code]=false);addEventListener('blur',()=>{keys={};move={x:0,y:0}});
-let leftTouch=null,rightTouch=null,lastX=0,lastY=0,lastTap=0,touchStartX=0,touchStartY=0;function jump(){if(playing&&!inTransition&&modal.hidden&&vertical===0)jumpVelocity=4.3}addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();jump()}});const joy=document.querySelector('#joystick'),stick=document.querySelector('#stick');addEventListener('touchstart',e=>{if(!playing||e.target.closest('button,input,select,#modal,#settings'))return;for(const t of e.changedTouches){if(t.clientX<innerWidth/2&&leftTouch===null){leftTouch=t.identifier;joy.style.display='block';joy.style.left=`${t.clientX-50}px`;joy.style.top=`${t.clientY-50}px`;joy.dataset.x=t.clientX;joy.dataset.y=t.clientY}else if(rightTouch===null){rightTouch=t.identifier;lastX=t.clientX;lastY=t.clientY;touchStartX=t.clientX;touchStartY=t.clientY}}},{passive:true});addEventListener('touchmove',e=>{if(!playing)return;e.preventDefault();for(const t of e.changedTouches){if(t.identifier===leftTouch){let x=t.clientX-Number(joy.dataset.x),y=t.clientY-Number(joy.dataset.y),len=Math.hypot(x,y);if(len>40){x=x/len*40;y=y/len*40}move={x:x/40,y:y/40};stick.style.transform=`translate(${x}px,${y}px)`}else if(t.identifier===rightTouch){yaw-=(t.clientX-lastX)*.004;pitch=Math.max(-1.2,Math.min(1.2,pitch-(t.clientY-lastY)*.004));lastX=t.clientX;lastY=t.clientY}}},{passive:false});function endTouch(e){for(const t of e.changedTouches){if(t.identifier===leftTouch){leftTouch=null;move={x:0,y:0};stick.style.transform='';joy.style.left='';joy.style.top='';joy.style.display=''}if(t.identifier===rightTouch){if(Math.hypot(t.clientX-touchStartX,t.clientY-touchStartY)<18){const now=performance.now();if(now-lastTap<350){jump();lastTap=0}else lastTap=now}rightTouch=null}}}addEventListener('touchend',endTouch);addEventListener('touchcancel',endTouch);let dragging=false;renderer.domElement.addEventListener('mousedown',()=>dragging=true);addEventListener('mouseup',()=>dragging=false);addEventListener('mousemove',e=>{if(playing&&dragging){yaw-=e.movementX*.004;pitch=Math.max(-1.2,Math.min(1.2,pitch-e.movementY*.004))}});addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();lift3d.camera.aspect=innerWidth/innerHeight;lift3d.camera.updateProjectionMatrix();renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight)});
-let last=performance.now(),lastSend=0;function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.05);last=now;if(playing){let x=move.x+(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0),y=move.y+(keys.KeyS||keys.ArrowDown?1:0)-(keys.KeyW||keys.ArrowUp?1:0);let length=Math.hypot(x,y);if(length>1){x/=length;y/=length}if(inTransition||!modal.hidden||!settings.hidden){x=0;y=0}const running=(sprinting||keys.ShiftLeft||keys.ShiftRight)&&!exhausted&&stamina>0&&Math.hypot(x,y)>.1&&!inTransition&&modal.hidden;stamina=THREE.MathUtils.clamp(stamina+(running?-24:14)*dt,0,100);if(stamina<=0)exhausted=true;else if(stamina>=25)exhausted=false;document.querySelector('#stamina-value').textContent=Math.round(stamina);document.querySelector('#stamina-fill').style.width=`${stamina}%`;const speed=running?5.8:3.5,limit=room==='basement'?MAZE_LIMIT:8.4;const nx=THREE.MathUtils.clamp(pos.x+(x*Math.cos(yaw)+y*Math.sin(yaw))*speed*dt,-limit,limit),nz=THREE.MathUtils.clamp(pos.z+(-x*Math.sin(yaw)+y*Math.cos(yaw))*speed*dt,-limit,limit);if(room!=='basement'||walkable(nx,pos.z))pos.x=nx;if(room!=='basement'||walkable(pos.x,nz))pos.z=nz;if(now>portalReady&&!inTransition&&room==='main'&&pos.x>3.15&&pos.x<5.85&&pos.z< -6.15)fall();jumpVelocity-=9.8*dt;vertical=Math.max(0,vertical+jumpVelocity*dt);if(vertical===0)jumpVelocity=0;camera.position.copy(pos);camera.position.y+=vertical;updateAction();camera.rotation.order='YXZ';camera.rotation.set(pitch,yaw,0);if(now-lastSend>50&&socket?.readyState===WebSocket.OPEN){socket.send(JSON.stringify({type:'move',x:pos.x,z:pos.z,rotation:yaw,room,y:vertical,running}));lastSend=now}for(const p of others.values()){p.group.position.lerp(p.target,Math.min(1,dt*12));p.group.rotation.y=p.rotation;animateAvatar(p.avatar,now,dt,now-p.lastMove<180);if(p.toolUseUntil>now)p.avatar.arms[1].rotation.x=-.8-Math.sin((p.toolUseUntil-now)/650*Math.PI)*1.0;const stepDistance=p.group.position.distanceTo(pos);if(p.group.visible&&now-p.lastMove<180&&stepDistance<9&&now-(p.lastStepSound||0)>(p.running?300:520)){footstep(!!p.running,Math.max(0,1-stepDistance/9)*1.2);p.lastStepSound=now}}if(room==='basement'&&monsterUpdated){const moving=monster.group.position.distanceTo(monsterTarget)>.03;monster.group.position.lerp(monsterTarget,Math.min(1,dt*9));monster.group.rotation.y=monsterRotation;animateMonster(monster,dt,moving,monsterChasing)}held.visible=room==='basement'&&!!equipped;held.rotation.x=toolUseUntil>now?Math.sin((toolUseUntil-now)/650*Math.PI)*-.8:0;if(Math.hypot(x,y)>.1&&!inTransition&&modal.hidden&&settings.hidden&&now-(window.lastFootstep||0)>(running?290:500)){footstep(running);window.lastFootstep=now}}else{camera.position.set(0,1.65,4);camera.rotation.set(0,Math.sin(now*.00015)*.2,0)}if(inTransition&&liftStarted){lift3d.update((now-liftStarted)/1000,dt);renderer.render(lift3d.scene,lift3d.camera)}else renderer.render(scene,camera)}requestAnimationFrame(frame);
+// ---------------------------------------------------------------- shooting
+function fireOnce(){
+ const now=performance.now();
+ if(room!=='basement'||!puzzle[ownWeapon])return;
+ if(equipped!==ownWeapon)setEquipped(ownWeapon);
+ if(now<reloadUntil||ammo<=0){if(ammo<=0&&now>reloadUntil)reload();return}
+ if(now-lastShot<115)return;
+ lastShot=now;ammo--;updateInventory();
+ send({type:'shoot'});
+ gunshot(0);
+ muzzle.intensity=4.5;
+ setTimeout(()=>muzzle.intensity=0,45);
+ pitch=Math.min(1.2,pitch+.012);
+}
+function reload(){
+ if(ammo>=MAG||performance.now()<reloadUntil)return;
+ send({type:'reload'});reloadSound();
+ reloadUntil=performance.now()+1700;
+ setTimeout(()=>{ammo=MAG;updateInventory()},1700);
+}
+const fireButton=$('#fire'),reloadButton=$('#reload');
+fireButton.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();shooting=true;fireOnce();fireButton.setPointerCapture(event.pointerId)});
+for(const type of ['pointerup','pointercancel','lostpointercapture'])fireButton.addEventListener(type,()=>shooting=false);
+for(const type of ['touchstart','touchmove','touchend'])fireButton.addEventListener(type,event=>event.stopPropagation(),{passive:true});
+reloadButton.addEventListener('click',event=>{event.stopPropagation();reload()});
 
-const sprintButton=document.querySelector('#sprint');sprintButton.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();sprinting=true;sprintButton.setPointerCapture(e.pointerId)});for(const type of ['pointerup','pointercancel','lostpointercapture'])sprintButton.addEventListener(type,()=>sprinting=false);for(const type of ['touchstart','touchmove','touchend'])sprintButton.addEventListener(type,e=>e.stopPropagation(),{passive:true});
-fetch('/api/version').then(r=>r.json()).then(d=>{document.querySelector('#build-info').textContent='сборка '+d.build}).catch(()=>{document.querySelector('#build-info').textContent='сборка неизвестна'});
+// ---------------------------------------------------------------- input
+const joystick=$('#joystick'),stick=$('#stick');
+let joystickPointer=null,lookPointer=null,lookLast={x:0,y:0};
+joystick.addEventListener('pointerdown',event=>{event.preventDefault();joystickPointer={id:event.pointerId,cx:event.clientX,cy:event.clientY};joystick.setPointerCapture(event.pointerId)});
+joystick.addEventListener('pointermove',event=>{
+ if(!joystickPointer||event.pointerId!==joystickPointer.id)return;
+ const dx=event.clientX-joystickPointer.cx,dy=event.clientY-joystickPointer.cy,radius=44,length=Math.hypot(dx,dy);
+ const clamped=Math.min(1,length/radius),angle=Math.atan2(dy,dx);
+ move.x=Math.cos(angle)*clamped;move.y=Math.sin(angle)*clamped;
+ stick.style.transform=`translate(${Math.cos(angle)*clamped*radius}px,${Math.sin(angle)*clamped*radius}px)`});
+for(const type of ['pointerup','pointercancel','lostpointercapture'])joystick.addEventListener(type,()=>{joystickPointer=null;move.x=0;move.y=0;stick.style.transform='translate(0,0)'});
+renderer.domElement.addEventListener('pointerdown',event=>{if(!playing)return;lookPointer={id:event.pointerId,x:event.clientX,y:event.clientY};renderer.domElement.setPointerCapture(event.pointerId)});
+renderer.domElement.addEventListener('pointermove',event=>{
+ if(!lookPointer||event.pointerId!==lookPointer.id)return;
+ yaw-=(event.clientX-lookPointer.x)*.0045;pitch=THREE.MathUtils.clamp(pitch-(event.clientY-lookPointer.y)*.0045,-1.2,1.2);
+ lookPointer.x=event.clientX;lookPointer.y=event.clientY});
+for(const type of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(type,()=>lookPointer=null);
+addEventListener('keydown',event=>{keys[event.code]=true;if(event.code==='KeyR')reload();if(event.code==='Space'&&vertical===0){jumpVelocity=4.4}});
+addEventListener('keyup',event=>keys[event.code]=false);
+addEventListener('blur',()=>{keys={};move={x:0,y:0};shooting=false});
+const sprintButton=$('#sprint');
+sprintButton.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();sprinting=true;sprintButton.setPointerCapture(event.pointerId)});
+for(const type of ['pointerup','pointercancel','lostpointercapture'])sprintButton.addEventListener(type,()=>sprinting=false);
+for(const type of ['touchstart','touchmove','touchend'])sprintButton.addEventListener(type,event=>event.stopPropagation(),{passive:true});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();lobbyCamera.aspect=camera.aspect;lobbyCamera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+
+// ---------------------------------------------------------------- network
+function label(text){const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;const ctx=canvas.getContext('2d');
+ ctx.font='bold 44px Arial';ctx.textAlign='center';ctx.fillStyle='#ffcaa8';ctx.shadowColor='#5c1408';ctx.shadowBlur=10;ctx.fillText(text,256,78);
+ const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(canvas),transparent:true,depthTest:false}));
+ sprite.scale.set(2.2,.55,1);sprite.position.y=2.35;return sprite}
+function addPlayer(p){
+ if(others.has(p.id))return;
+ const character=createCharacter(p.skin),group=character.group;
+ group.add(label(p.name));group.position.set(p.x,p.y||0,p.z);group.rotation.y=p.rotation;
+ group.visible=(p.room||'main')===room&&(room==='main'||p.instance===sessionId);
+ scene.add(group);
+ others.set(p.id,{group,character,target:new THREE.Vector3(p.x,p.y||0,p.z),rotation:p.rotation,room:p.room||'main',instance:p.instance??null,
+  skin:p.skin,lastMove:0,lastStepSound:0,equipped:p.equipped||null,heldModel:null,toolUseUntil:0,running:false});
+ updateCount();
+}
+function updateCount(){$('#count').textContent=others.size+1}
+function connect(){
+ const name=$('#nickname').value.trim()||'Игрок';
+ localStorage.setItem('deni-name',name);
+ const button=$('#play');if(button.disabled)return;
+ button.disabled=true;$('#status').textContent='ПОДКЛЮЧАЕМСЯ...';
+ socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
+ socket.onopen=()=>socket.send(JSON.stringify({type:'join',name,skin:$('#skin').value}));
+ socket.onmessage=event=>{let message;try{message=JSON.parse(event.data)}catch{return}handle(message)};
+ socket.onclose=()=>{voice.stop();button.disabled=false;shooting=false;
+  if(playing){playing=false;$('#connection').hidden=false}else $('#status').textContent='НЕ УДАЛОСЬ ПОДКЛЮЧИТЬСЯ. ПОПРОБУЙ ЕЩЁ РАЗ.'}
+}
+function handle(message){
+ switch(message.type){
+  case 'welcome':
+   selfId=message.id;voice.setId(message.id);yaw=Math.PI;pos.set(message.player.x,1.65,message.player.z);
+   message.players.forEach(addPlayer);playing=true;updateCount();
+   $('#stamina').hidden=false;$('#sprint').hidden=false;$('#lobby').style.display='none';$('#hud').hidden=false;setRoom('main');
+   break;
+  case 'choice':{
+   let seconds=15;
+   showDialog('Куда дальше?','Спуститься одному или подождать друга? Осталось 15 секунд.',[['Одному',()=>{modal.hidden=true;send({type:'lift-choice',choice:'solo'})}],['Подождать друга',()=>send({type:'lift-choice',choice:'together'})]]);
+   clearInterval(window.choiceCountdown);
+   window.choiceCountdown=setInterval(()=>{seconds--;if(seconds<=0||modal.hidden){clearInterval(window.choiceCountdown);return}
+    $('#modal-text').textContent=`Спуститься одному или подождать друга? Осталось ${seconds} сек.`},1000);
+   break}
+  case 'waiting':clearInterval(window.choiceCountdown);showDialog('Ждём друга','Когда друг тоже прыгнет в бездну, вы спуститесь вместе.',[['Одному',()=>{modal.hidden=true;send({type:'lift-choice',choice:'solo'})}]]);break;
+  case 'lift':{
+   clearInterval(window.choiceCountdown);
+   sessionId=message.instance;n=message.n;selfSlot=message.slot;ownWeapon=message.own;spots=message.spots;ammo=message.ammo;reloadUntil=0;
+   if(maze){basement.remove(maze.group);maze=null}
+   maze=createMaze(n);basement.add(maze.group);placeSpots(maze,spots);updatePuzzle(message.puzzle);
+   setEquipped(null,false);monsterUpdated=0;monsterSleeping=false;monster.group.visible=false;
+   lift(message.together);
+   break}
+  case 'voice-peers':voice.sync(message.peers);break;
+  case 'voice-signal':voice.onSignal(message.from,message.data);break;
+  case 'equip':
+   if(message.id===selfId)setEquipped(message.item,false);
+   else{const p=others.get(message.id);if(p){p.equipped=message.item;equipOther(p,message.item)}}
+   break;
+  case 'use-tool':
+   if(message.id!==selfId){const p=others.get(message.id);if(p)p.toolUseUntil=performance.now()+650}
+   playSound(message.item==='door'?'door':'tool');
+   break;
+  case 'shot':{
+   const now=performance.now();
+   if(message.id!==selfId){const p=others.get(message.id);
+    if(p){p.toolUseUntil=now+300;gunshot(p.group.position.distanceTo(pos))}else gunshot(12)}
+   if(message.hit)notify('Попадание в Майкла.');break}
+  case 'ammo':ammo=message.ammo;updateInventory();break;
+  case 'reload':if(message.until)reloadUntil=performance.now()+1700;break;
+  case 'monster':
+   monsterTarget.set(message.x,0,message.z);if(!monsterUpdated)monster.group.position.copy(monsterTarget);
+   monsterRotation=message.rotation;monsterChasing=!!message.chasing;monsterSleeping=!!message.sleeping;
+   monsterUpdated=performance.now();monster.group.visible=room==='basement';break;
+  case 'monster-sleep':monsterSleeping=true;playSound('sleep');notify('Майкл упал. 15 секунд у вас есть.');break;
+  case 'monster-wake':monsterSleeping=false;notify('Майкл встал.');break;
+  case 'caught':pos.set(message.x,1.65,message.z);vertical=0;jumpVelocity=0;notify('Майкл поймал тебя. Ты у лифта.');playSound('caught');break;
+  case 'enter-void':setRoom('void');break;
+  case 'puzzle':updatePuzzle(message.puzzle);break;
+  case 'message':notify(message.text);break;
+  case 'join':addPlayer(message.player);break;
+  case 'leave':{const p=others.get(message.id);if(p){scene.remove(p.group);others.delete(message.id);updateCount()}break}
+  case 'move':{
+   const p=others.get(message.id);if(!p)break;
+   if(Math.hypot(message.x-p.target.x,message.z-p.target.z)>.002)p.lastMove=performance.now();
+   p.target.set(message.x,message.y||0,message.z);p.rotation=message.rotation;p.room=message.room||'main';p.instance=message.instance??null;p.running=!!message.running;
+   p.group.visible=room!=='void'&&sameLocation(p);
+   if(message.equipped!==undefined&&message.equipped!==p.equipped){p.equipped=message.equipped;equipOther(p,message.equipped)}
+   break}
+ }
+}
+$('#nickname').value=localStorage.getItem('deni-name')||'';
+$('#play').onclick=()=>{unlockAudio();connect()};
+$('#nickname').addEventListener('keydown',event=>{if(event.key==='Enter')connect()});
+$('#reconnect').onclick=()=>location.reload();
+
+// ---------------------------------------------------------------- main loop
+let last=performance.now(),lastSend=0;
+function frame(now){
+ requestAnimationFrame(frame);
+ const dt=Math.min((now-last)/1000,.05);last=now;
+ if(playing){updateGame(now,dt)}else{updateLobby(now,dt)}
+ if(inTransition&&lastLiftStart)lift3d.update((now-lastLiftStart)/1000,dt);
+ if(inTransition&&lastLiftStart)renderer.render(lift3d.scene,lift3d.camera);
+ else renderer.render(playing?scene:lobbyScene,playing?camera:lobbyCamera);
+}
+function updateLobby(now,dt){
+ lobbyTime+=dt;
+ lobbyZ+=dt*.85;if(lobbyZ>9)lobbyZ=-16;
+ lobbyMonster.group.position.set(Math.sin(lobbyTime*.6)*.35,0,lobbyZ);
+ lobbyMonster.group.rotation.y=0;
+ animateMonster(lobbyMonster,dt,true,false);
+ lobbyCamera.position.x=Math.sin(lobbyTime*.25)*.25;
+ lobbyCamera.position.y=1.7+Math.sin(lobbyTime*.7)*.02;
+ lobbyCamera.lookAt(0,1.3,lobbyZ-4);
+ lobbyGlow.material.color.setHSL(.045,.9,.45+Math.sin(lobbyTime*2)*.05);
+}
+function updateGame(now,dt){
+ let x=move.x+(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
+ let y=move.y+(keys.KeyS||keys.ArrowDown?1:0)-(keys.KeyW||keys.ArrowUp?1:0);
+ const length=Math.hypot(x,y);if(length>1){x/=length;y/=length}
+ if(inTransition||!modal.hidden||!settings.hidden){x=0;y=0}
+ const running=(sprinting||keys.ShiftLeft||keys.ShiftRight)&&!exhausted&&stamina>0&&Math.hypot(x,y)>.1&&!inTransition&&!modal.hidden;
+ stamina=THREE.MathUtils.clamp(stamina+(running?-24:14)*dt,0,100);
+ if(stamina<=0)exhausted=true;else if(stamina>=25)exhausted=false;
+ $('#stamina-value').textContent=Math.round(stamina);$('#stamina-fill').style.width=`${stamina}%`;
+ const speed=running?5.8:3.4,limit=room==='basement'?limitFor(n):8.4;
+ const stepX=x*Math.cos(yaw)+y*Math.sin(yaw),stepZ=-x*Math.sin(yaw)+y*Math.cos(yaw);
+ const nx=THREE.MathUtils.clamp(pos.x+stepX*speed*dt,-limit,limit),nz=THREE.MathUtils.clamp(pos.z+stepZ*speed*dt,-limit,limit);
+ if(room!=='basement'||walkable(nx,pos.z))pos.x=nx;
+ if(room!=='basement'||walkable(pos.x,nz))pos.z=nz;
+ if(now>portalReady&&!inTransition&&room==='main'&&pos.x>3.1&&pos.x<5.9&&pos.z<-5.0&&pos.z>-8)fall();
+ jumpVelocity-=12*dt;vertical=Math.max(0,vertical+jumpVelocity*dt);if(vertical===0)jumpVelocity=0;
+ camera.position.copy(pos);camera.position.y+=vertical;
+ camera.rotation.order='YXZ';camera.rotation.set(pitch,yaw,0);
+ if(shooting&&now-lastShot>115)fireOnce();
+ if(now-lastSend>50&&socket?.readyState===WebSocket.OPEN){
+  socket.send(JSON.stringify({type:'move',x:pos.x,z:pos.z,rotation:yaw,room,y:vertical,running}));lastSend=now}
+ for(const p of others.values()){
+  p.group.position.lerp(p.target,Math.min(1,dt*12));p.group.rotation.y=p.rotation;
+  const moving=now-p.lastMove<220;
+  animateCharacter(p.character,dt,moving,p.running);
+  if(p.toolUseUntil>now&&p.heldModel)p.heldModel.rotation.x=-.6-Math.sin((p.toolUseUntil-now)/650*Math.PI)*.9;
+  const stepDistance=p.group.position.distanceTo(pos);
+  if(p.group.visible&&moving&&stepDistance<9&&now-(p.lastStepSound||0)>(p.running?300:520)){footstep(!!p.running,Math.max(0,1-stepDistance/9)*1.2);p.lastStepSound=now}
+ }
+ if(room==='basement'&&monsterUpdated){
+  const moving=monster.group.position.distanceTo(monsterTarget)>.03;
+  monster.group.position.lerp(monsterTarget,Math.min(1,dt*9));monster.group.rotation.y=monsterRotation;
+  animateMonster(monster,dt,moving,monsterChasing,monsterSleeping);
+ }
+ held.visible=room==='basement'&&!!equipped;
+ held.position.y=-.5+Math.sin(now*.0016)*.006+(equipped&&WEAPONS.includes(equipped)?-.02:0);
+ held.rotation.x=(toolUseUntil>now&&!WEAPONS.includes(equipped||''))?Math.sin((toolUseUntil-now)/650*Math.PI)*-.9:0;
+ if(Math.hypot(x,y)>.1&&!inTransition&&modal.hidden&&settings.hidden&&now-(window.lastFootstep||0)>(running?290:500)){footstep(running);window.lastFootstep=now}
+ updateAction();
+}
+function walkable(x,z){
+ if(!maze||!canWalk(maze.walls,x,z))return false;
+ if(puzzle.door)return true;
+ return !(Math.abs(x)<1.15&&Math.abs(z-maze.door.z)<.4)
+}
+function fall(){
+ inTransition=true;move={x:0,y:0};keys={};room='lift';
+ for(const p of others.values())p.group.visible=false;
+ send({type:'fall'});
+}
+preloadCharacters();
+requestAnimationFrame(frame);

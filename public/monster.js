@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 // The supplied model is a rigged Mixamo character in centimetres that faces +Z.
 // Its bundled clip only holds a static pose, so the walk cycle here is built from
@@ -14,7 +15,7 @@ export function createMonster(){
  group.add(holder);
  const rig={group,holder,ready:false,phase:0,bones:{},mixer:null,machete:null};
  addMachetePlaceholder(false); // only revealed if the model cannot load
- const loader=new GLTFLoader();
+ const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
  loader.load(MODEL,gltf=>{
   const model=gltf.scene;
   model.traverse(o=>{
@@ -62,12 +63,15 @@ export function createMonster(){
  }
 }
 
-export function animateMonster(m,dt,moving,chasing=false){
+export function animateMonster(m,dt,moving,chasing=false,sleeping=false){
  if(m.fallback&&!m.ready){m.fallback.rotation.z=Math.sin((m.phase+=dt*2))*.02;return}
  if(!m.ready)return;
  m.phase+=dt*(moving?(chasing?8.4:5.4):1.1);
  const stride=moving?(chasing?.62:.44):0, swing=Math.sin(m.phase), lift=Math.abs(Math.cos(m.phase));
  if(m.mixer)m.mixer.update(dt);
+ m.holder.rotation.z+=((sleeping?1.45:0)-m.holder.rotation.z)*Math.min(1,dt*4);
+ m.holder.rotation.x+=((sleeping?-.1:0)-m.holder.rotation.x)*Math.min(1,dt*4);
+ if(sleeping){m.holder.position.y=0;return}
  const p=m.parts||{};
  turn(p.LeftUpLeg,X_AXIS,-swing*stride);
  turn(p.RightUpLeg,X_AXIS,swing*stride);

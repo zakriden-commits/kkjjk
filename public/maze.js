@@ -1,42 +1,69 @@
-import { makeTool } from './tools.js';
+import { makeTool, makeWeapon } from './tools.js';
 import * as THREE from 'three';
-import { GRID, layout, ENTRY, isSafeCell } from './layout.js';
-export { MAZE_LIMIT, ENTRY, HAMMER, CROWBAR, DOOR } from './layout.js';
-export function createMaze() {
- const group=new THREE.Group(),walls=[],items={};
- const cache=new Map();function material(c){if(!cache.has(c))cache.set(c,new THREE.MeshStandardMaterial({color:c,roughness:.92}));return cache.get(c)}
- function box(w,h,d,x,y,z,c,parent=group){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(c));m.position.set(x,y,z);parent.add(m);return m}
- function wall(x,z,w,d){box(w,3.4,d,x,1.7,z,0x8f8351);box(w,.12,d,x,.06,z,0x80724c);walls.push({x,z,w,d})}
- box(44,.2,44,0,-.1,0,0x81764c);box(44,.2,44,0,3.5,0,0xa69a65);
- // Deterministic depth-first maze. All cells are connected, and one central
- // wall is reserved for the boarded door rather than being accidentally opened.
- const n=GRID,cells=layout(),center=Math.floor(n*n/2),half=(n-1)/2;
- for(let z=0;z<n;z++)for(let x=0;x<n;x++){const i=z*n+x,cx=(x-half)*4,cz=(z-half)*4;
-  if(!cells[i].open[0]){if(i===center){wall(cx-1.55,cz-2,.9,.18);wall(cx+1.55,cz-2,.9,.18);box(2.2,.55,.18,cx,3.125,cz-2,0x8f8351)}else wall(cx,cz-2,4,.18)}
-  if(!cells[i].open[3])wall(cx-2,cz,.18,4);
-  if(z===n-1)wall(cx,cz+2,4,.18);if(x===n-1)wall(cx+2,cz,.18,4);
-  if((x+z)%2===0){box(1.45,.035,.3,cx,3.37,cz,0xf1e8bd);}
- }
- // Green floor tiles mark exactly the cells the monster treats as safe.
- for(let i=0;i<GRID*GRID;i++)if(isSafeCell(i)){const x=(i%GRID-(GRID-1)/2)*4,z=(Math.floor(i/GRID)-(GRID-1)/2)*4;box(3.86,.014,3.86,x,.014,z,0x4b6b47)}
- // A real panel attached to the south wall by the entry.
- box(2.4,2.9,.08,0,1.45,21.86,0x555650);box(1.9,2.55,.08,0,1.28,21.79,0x333937);
- box(1.5,.95,.08,-1,1.65,21.86,0x54482f);box(1.34,.79,.035,-1,1.65,21.79,0xe8d99c);
- const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;const ctx=canvas.getContext('2d');ctx.fillStyle='#e8d99c';ctx.fillRect(0,0,512,256);ctx.fillStyle='#4b4021';ctx.textAlign='center';ctx.font='bold 70px Arial';ctx.fillText('ПРАВИЛА',256,105);ctx.font='34px Arial';ctx.fillText('Нажми кнопку рядом',256,170);const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.3,.74),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas)}));sign.position.set(-1,1.65,21.765);sign.rotation.y=Math.PI;group.add(sign);
- // One central door; a solid wall behind it leads to a teleport, not another corridor.
- wall(0,-2.34,2.15,.15);
- // Hinged central door in the reserved wall; its boards are on the accessible south face.
- box(.12,2.85,.22,-1,1.425,-2,0x5b503c);box(.12,2.85,.22,1,1.425,-2,0x5b503c);box(2.12,.12,.22,0,2.85,-2,0x5b503c);
- items.door=new THREE.Group();items.door.position.set(-.9,0,-2);group.add(items.door);box(1.8,2.65,.12,.9,1.325,0,0x6b573d,items.door);box(1.4,2.2,.025,.9,1.4,.07,0x7e6849,items.door);sphere(items.door,.06,0xc5b56c,1.52,1.17,.1);
- items.boards=new THREE.Group();group.add(items.boards);items.nails=new THREE.Group();group.add(items.nails);
- for(const [y,angle] of [[.9,.08],[1.8,-.08]]){const plank=box(2.1,.22,.09,0,y,-1.88,0x674628,items.boards);plank.rotation.z=angle;for(const x of [-.72,.72])sphere(items.nails,.042,0xbab6a5,x,y+Math.sin(angle)*x,-1.82)}
- function sphere(parent,r,col,x,y,z){const m=new THREE.Mesh(new THREE.SphereGeometry(r,16,10),material(col));m.position.set(x,y,z);parent.add(m);return m}
- function cylinder(parent,r1,r2,h,col,x,y,z,rz=0){const m=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,14),material(col));m.position.set(x,y,z);m.rotation.z=rz;parent.add(m);return m}
- function tool(type){const g=new THREE.Group();group.add(g);const pedestal=box(.8,.12,.8,0,.06,0,0x655a43,g);pedestal.name='pedestal';const tool=makeTool(type);tool.name='tool';tool.position.y=.15;g.add(tool);g.visible=false;return g}
- items.hammer=tool('hammer');items.crowbar=tool('crowbar');
- return {group,walls,items};
-}
-export function updateMaze(maze,p){maze.items.hammer.visible=!p.hammer;maze.items.crowbar.visible=!p.crowbar;maze.items.nails.visible=!p.nails;maze.items.boards.visible=!p.boards;maze.items.door.rotation.y=p.door?-1.2:0;}
-export function canWalk(walls,x,z){return !walls.some(w=>Math.abs(x-w.x)<w.w/2+.27&&Math.abs(z-w.z)<w.d/2+.27)}
+import { CELL, gridFor, layout, entryFor, doorFor, isSafe, limitFor } from './layout.js';
 
-export function placeTools(maze,spots){for(const name of ['hammer','crowbar']){const spot=spots[name],g=maze.items[name],pedestal=g.getObjectByName('pedestal'),tool=g.getObjectByName('tool');g.position.set(spot.x,0,spot.z);g.rotation.set(0,0,0);pedestal.visible=spot.type==='floor';tool.position.set(0,.15,0);tool.rotation.set(0,0,0);if(spot.type==='wall'){g.position.y=1.1;g.rotation.y=[0,Math.PI/2,Math.PI,-Math.PI/2][spot.dir]}else if(spot.type==='ceiling'){g.position.y=3.25;tool.position.y=0;tool.rotation.x=Math.PI/2}g.visible=true}}
+const WALL=0x322c26,FLOOR=0x221f1c,CEIL=0x1a1715,CORRIDOR=0x2b2723;
+export const WEAPON_COLORS={akA:0x9c2b1c,akB:0x1f4f9c};
+
+export function createMaze(n=gridFor(false)){
+ const group=new THREE.Group(),walls=[],items={},half=(n-1)/2,entry=entryFor(n),size=n*CELL+2;
+ const cache=new Map();
+ function material(color,metalness=0){const key=`${color}:${metalness}`;if(!cache.has(key))cache.set(key,new THREE.MeshStandardMaterial({color,roughness:.95,metalness}));return cache.get(key)}
+ function box(w,h,d,x,y,z,color,parent=group,metalness=0){const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(color,metalness));mesh.position.set(x,y,z);parent.add(mesh);return mesh}
+ function wall(x,z,w,d){box(w,3.6,d,x,1.8,z,WALL);box(w,.1,d,x,.05,z,CORRIDOR);walls.push({x,z,w,d})}
+ function sphere(parent,r,color,x,y,z){const mesh=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),material(color,.3));mesh.position.set(x,y,z);parent.add(mesh);return mesh}
+ box(size,.2,size,0,-.1,0,FLOOR);box(size,.2,size,0,3.6,0,CEIL);
+ const cells=layout(n),center=Math.floor(n*n/2);
+ for(let z=0;z<n;z++)for(let x=0;x<n;x++){const i=z*n+x,cx=(x-half)*CELL,cz=(z-half)*CELL;
+  if(!cells[i].open[0]){if(i===center){wall(cx-1.5,cz-2,.95,.18);wall(cx+1.5,cz-2,.95,.18);box(1.9,.6,.18,cx,3.3,cz-2,WALL)}else wall(cx,cz-2,CELL,.18)}
+  if(!cells[i].open[3])wall(cx-2,cz,.18,CELL);
+  if(z===n-1)wall(cx,cz+2,CELL,.18);if(x===n-1)wall(cx+2,cz,.18,CELL);
+  if((x+z)%2===0){box(1.1,.04,.22,cx,3.48,cz,0x481009);box(1.0,.02,.12,cx,3.455,cz,0x8d2412)}
+ }
+ // The lift square is the only safe ground; it is a small three-step box.
+ for(let x=-1.5;x<=1.5;x+=1)for(let z=-1.5;z<=1.5;z+=1)box(1.02,.016,1.02,entry.x+x,.016,entry.z+z,0x3f5a3c);
+ box(3.3,.03,.12,entry.x,.03,entry.z-1.6,0x76e08a);box(3.3,.03,.12,entry.x,.03,entry.z+1.6,0x76e08a);
+ box(.12,.03,3.3,entry.x-1.65,.03,entry.z,0x76e08a);box(.12,.03,3.3,entry.x+1.65,.03,entry.z,0x76e08a);
+ // Rules board on the south wall next to the lift.
+ const signZ=((n-1)/2)*CELL+CELL/2-.14;
+ box(2.4,2.9,.08,entry.x-2.6,1.45,signZ,0x2b2320);box(1.9,2.55,.08,entry.x-2.6,1.28,signZ-.03,0x171310);
+ const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;const ctx=canvas.getContext('2d');
+ ctx.fillStyle='#1c0d0b';ctx.fillRect(0,0,512,256);ctx.fillStyle='#ff5a2b';ctx.textAlign='center';ctx.font='bold 62px Arial';ctx.fillText('ПРАВИЛА',256,96);
+ ctx.font='30px Arial';ctx.fillStyle='#e8c9b6';ctx.fillText('Найди 4 предмета',256,158);ctx.fillText('и не шуми',256,200);
+ const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.3,.74),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas)}));
+ sign.position.set(entry.x-2.6,1.65,signZ-.08);sign.rotation.y=Math.PI;group.add(sign);
+ // One central door with a solid wall behind it: opening it teleports to level three.
+ const door=doorFor();wall(door.x,door.z-.34,2.15,.15);
+ box(.12,2.9,.22,door.x-1,1.45,door.z,0x30251d);box(.12,2.9,.22,door.x+1,1.45,door.z,0x30251d);box(2.12,.12,.22,door.x,2.9,door.z,0x30251d);
+ items.door=new THREE.Group();items.door.position.set(door.x-.9,0,door.z);group.add(items.door);
+ box(1.8,2.7,.12,.9,1.35,0,0x40301f,items.door);box(1.4,2.2,.025,.9,1.42,.07,0x4d3a26,items.door);sphere(items.door,.06,0xc5b56c,1.52,1.17,.1);
+ items.boards=new THREE.Group();group.add(items.boards);items.nails=new THREE.Group();group.add(items.nails);
+ for(const [y,angle] of [[.9,.08],[1.8,-.08]]){const plank=box(2.4,.24,.09,door.x,y,door.z+.12,0x3a2a1c,items.boards);plank.rotation.z=angle;
+  for(const x of [-.8,.8])sphere(items.nails,.045,0x8d8a7d,door.x+x,y+Math.sin(angle)*x,door.z+.18)}
+ items.lamp=new THREE.PointLight(0xff5f2a,9,12);items.lamp.position.set(door.x,2.6,door.z+.9);group.add(items.lamp);
+
+ function pickup(name){const g=new THREE.Group();group.add(g);const pedestal=box(.8,.12,.8,0,.06,0,0x2f2a24,g);pedestal.name='pedestal';
+  const model=name==='hammer'||name==='crowbar'?makeTool(name):makeWeapon(WEAPON_COLORS[name]||0x9c2b1c);
+  model.name='tool';model.position.y=.15;g.add(model);g.visible=false;return g}
+ for(const name of ['hammer','crowbar','akA','akB'])items[name]=pickup(name);
+ return {group,walls,items,n,entry,door,cells}
+}
+
+export function placeSpots(maze,spots){
+ for(const spot of spots){
+  const g=maze.items[spot.name];if(!g)continue;
+  const pedestal=g.getObjectByName('pedestal'),model=g.getObjectByName('tool');
+  g.position.set(spot.x,0,spot.z);g.rotation.set(0,0,0);
+  pedestal.visible=spot.type==='floor';model.position.set(0,.15,0);model.rotation.set(0,Math.PI/2,0);
+  if(spot.type==='wall'){g.position.y=1.15;g.rotation.y=[0,Math.PI/2,Math.PI,-Math.PI/2][spot.dir]||0}
+  else if(spot.type==='ceiling'){g.position.y=3.42;model.position.y=0;model.rotation.x=Math.PI/2}
+  g.visible=true
+ }
+}
+export function updateMaze(maze,p){
+ for(const name of ['hammer','crowbar','akA','akB'])if(maze.items[name])maze.items[name].visible=!p[name];
+ maze.items.nails.visible=!p.nails;maze.items.boards.visible=!p.boards;maze.items.door.rotation.y=p.door?-1.35:0;
+ maze.items.lamp.intensity=p.door?14:9;
+}
+export function canWalk(walls,x,z){return !walls.some(w=>Math.abs(x-w.x)<w.w/2+.27&&Math.abs(z-w.z)<w.d/2+.27)}
+export {isSafe,limitFor};
