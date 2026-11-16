@@ -100,8 +100,11 @@ export function createVoice(send,notify,sendBinary){
   node.onended=()=>{try{node.disconnect()}catch{}}
  }
  function setPeers(list){
+  const before=peers;
   peers=Array.isArray(list)?list.length:Number(list)||0;
-  if(enabled&&peers===0)report('Микрофон включён, но друг пока не включил свой.');
+  if(!enabled)return;
+  if(peers>0&&before===0)report('Друг включил микрофон — вы слышите друг друга.');
+  else if(peers===0&&before>0)report('Друг выключил микрофон.');
  }
  return {
   enable,stop,play,setPeers,
