@@ -1,6 +1,6 @@
 import { makeTool } from './tools.js';
 import * as THREE from 'three';
-import { GRID, layout, ENTRY } from './layout.js';
+import { GRID, layout, ENTRY, isSafeCell } from './layout.js';
 export { MAZE_LIMIT, ENTRY, HAMMER, CROWBAR, DOOR } from './layout.js';
 export function createMaze() {
  const group=new THREE.Group(),walls=[],items={};
@@ -17,8 +17,8 @@ export function createMaze() {
   if(z===n-1)wall(cx,cz+2,4,.18);if(x===n-1)wall(cx+2,cz,.18,4);
   if((x+z)%2===0){box(1.45,.035,.3,cx,3.37,cz,0xf1e8bd);}
  }
- // The green floor marks the same expanded safe zone used by the server.
- box(12,.012,8,0,.012,18,0x567755);
+ // Green floor tiles mark exactly the cells the monster treats as safe.
+ for(let i=0;i<GRID*GRID;i++)if(isSafeCell(i)){const x=(i%GRID-(GRID-1)/2)*4,z=(Math.floor(i/GRID)-(GRID-1)/2)*4;box(3.86,.014,3.86,x,.014,z,0x4b6b47)}
  // A real panel attached to the south wall by the entry.
  box(2.4,2.9,.08,0,1.45,21.86,0x555650);box(1.9,2.55,.08,0,1.28,21.79,0x333937);
  box(1.5,.95,.08,-1,1.65,21.86,0x54482f);box(1.34,.79,.035,-1,1.65,21.79,0xe8d99c);

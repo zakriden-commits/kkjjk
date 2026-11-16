@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { GRID, layout, MAZE_LIMIT, ENTRY, randomToolSpots, isSafeCell } from './public/layout.js';
-const app=express();app.use('/vendor/three',express.static('node_modules/three/build'));app.use(express.static('public'));
+const app=express();app.use('/vendor/three/addons',express.static('node_modules/three/examples/jsm'));app.use('/vendor/three',express.static('node_modules/three/build'));app.use(express.static('public'));
 let lastVisit=null;app.get('/api/history',(req,res)=>res.json({lastVisit}));
 const server=createServer(app),wss=new WebSocketServer({server}),players=new Map(),instances=new Map();let nextId=1,nextInstance=1,waiting=null;
 const freshPuzzle=()=>({hammer:false,crowbar:false,nails:false,boards:false,door:false});

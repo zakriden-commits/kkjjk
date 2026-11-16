@@ -1,13 +1,90 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// The supplied model is a rigged Mixamo character in centimetres that faces +Z.
+// Its bundled clip only holds a static pose, so the walk cycle here is built from
+// bone rotations. Rotating bones cannot stretch the skin, unlike scaling a group.
+const MODEL='/models/michael.glb', HEIGHT_METERS=2.32;
+const X_AXIS=new THREE.Vector3(1,0,0), Z_AXIS=new THREE.Vector3(0,0,1);
+const q=new THREE.Quaternion();
+
 export function createMonster(){
- const group=new THREE.Group(),figure=new THREE.Group();group.add(figure);const mats=new Map();function mat(c){if(!mats.has(c))mats.set(c,new THREE.MeshStandardMaterial({color:c,roughness:.85}));return mats.get(c)}
- function ell(parent,c,x,y,z,sx,sy,sz){const m=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),mat(c));m.position.set(x,y,z);m.scale.set(sx,sy,sz);parent.add(m);return m}
- function part(parent,c,x,y,z,r,len){const m=new THREE.Mesh(new THREE.CapsuleGeometry(r,len,5,12),mat(c));m.position.set(x,y,z);parent.add(m);return m}
- const legs=[],arms=[];for(const x of [-.15,.15]){const g=new THREE.Group();g.position.set(x,.87,0);figure.add(g);legs.push(g);part(g,0x202832,0,-.37,0,.12,.48);ell(g,0x15191a,0,-.79,-.06,.13,.08,.19)}
- ell(figure,0x28333d,0,1.27,0,.31,.48,.19);ell(figure,0x343e45,0,1.58,0,.34,.18,.20);
- for(const x of [-.38,.38]){const g=new THREE.Group();g.position.set(x,1.58,0);figure.add(g);arms.push(g);part(g,0x29333d,0,-.27,0,.1,.32);ell(g,0xc1b6a5,0,-.53,0,.09,.11,.08)}
- ell(figure,0xe0d9ca,0,1.89,0,.21,.25,.18);ell(figure,0x3d3a34,0,2.06,.015,.215,.09,.18);for(const x of [-.08,.08])ell(figure,0x1b1d1b,x,1.94,-.169,.04,.025,.015);ell(figure,0x8b857d,0,1.8,-.17,.06,.008,.008);
- const blade=new THREE.Group();blade.position.set(0,-.51,0);arms[1].add(blade);part(blade,0x39322a,0,-.08,0,.035,.12);const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute([-.055,-.16,0,.055,-.16,0,.065,-.66,0,.0,-.75,0,-.045,-.66,0],3));geometry.setIndex([0,1,2,0,2,4,4,2,3]);geometry.computeVertexNormals();blade.add(new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0xa9b0aa,metalness:.8,roughness:.35,side:THREE.DoubleSide})));
- return {group,figure,legs,arms,phase:0};
+ const group=new THREE.Group(),holder=new THREE.Group();
+ holder.rotation.y=Math.PI; // game forward is -Z, the model faces +Z
+ group.add(holder);
+ const rig={group,holder,ready:false,phase:0,bones:{},mixer:null,machete:null};
+ addMachetePlaceholder(false); // only revealed if the model cannot load
+ const loader=new GLTFLoader();
+ loader.load(MODEL,gltf=>{
+  const model=gltf.scene;
+  model.traverse(o=>{
+   if(o.isMesh){o.frustumCulled=false;o.castShadow=false;if(o.material){o.material.metalness=Math.min(o.material.metalness??0,.4);o.material.roughness=Math.max(o.material.roughness??.8,.55)}}
+   if(o.isBone)rig.bones[o.name]=o;
+  });
+  const box=new THREE.Box3().setFromObject(model),height=box.max.y-box.min.y;
+  model.scale.setScalar(HEIGHT_METERS/(height||2.13));
+  holder.add(model);
+  if(!gltf.animations.length)return;
+  rig.mixer=new THREE.AnimationMixer(model);
+  rig.mixer.clipAction(gltf.animations[0]).play();
+  rig.mixer.update(0);
+  const parts=['Hips','Spine2','LeftUpLeg','RightUpLeg','LeftLeg','RightLeg','LeftArm','RightArm','LeftForeArm','RightForeArm','RightHand','LeftHand','Neck','Head'];
+  rig.parts={};
+  for(const part of parts){const re=new RegExp(part+'(_\\d+)?$'),name=Object.keys(rig.bones).find(n=>re.test(n));rig.parts[part]=name?rig.bones[name]:null}
+  attachMachete(rig);
+  rig.ready=true;
+  addMachetePlaceholder(false);
+ },undefined,error=>{console.warn('Michael Myers model unavailable',error);addMachetePlaceholder(true)});
+ return rig;
+
+ function addMachetePlaceholder(on=true){ // a dark silhouette if the model cannot load
+  if(rig.fallback){rig.fallback.visible=on;return}
+  const material=new THREE.MeshStandardMaterial({color:0x191b19,roughness:.9});
+  const body=new THREE.Mesh(new THREE.CapsuleGeometry(.26,.62,6,12),material);
+  body.position.y=1.2;const head=new THREE.Mesh(new THREE.SphereGeometry(.2,16,12),new THREE.MeshStandardMaterial({color:0xd9d3c4,roughness:.8}));
+  head.position.y=1.92;const leg=new THREE.Mesh(new THREE.CapsuleGeometry(.13,.6,6,10),material);
+  leg.position.set(-.15,.45,0);const leg2=leg.clone();leg2.position.x=.15;
+  rig.fallback=new THREE.Group();rig.fallback.add(body,head,leg,leg2);rig.fallback.visible=on;group.add(rig.fallback);
+ }
+
+ function attachMachete(rig){
+  const hand=rig.parts.RightHand;if(!hand)return;
+  const steel=new THREE.MeshStandardMaterial({color:0xa8b0ad,metalness:.85,roughness:.3});
+  const grip=new THREE.MeshStandardMaterial({color:0x2a2019,roughness:.85});
+  const weapon=new THREE.Group();
+  const handle=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.6,11,10),grip);handle.position.y=4.5;
+  const blade=new THREE.Mesh(new THREE.BoxGeometry(5.2,31,.5),steel);blade.position.y=24;
+  const tip=new THREE.Mesh(new THREE.ConeGeometry(3.6,7,4),steel);tip.rotation.y=Math.PI/4;tip.scale.z=.18;tip.position.y=43;
+  const guard=new THREE.Mesh(new THREE.BoxGeometry(7,1.4,1.8),grip);guard.position.y=10.2;
+  weapon.add(handle,blade,tip,guard);
+  weapon.position.set(0,5,1.2);weapon.rotation.set(-.35,0,.12); // along the hand, angled a little forward
+  hand.add(weapon);rig.machete=weapon;
+ }
 }
-export function animateMonster(m,dt,moving){if(moving)m.phase+=dt*7;const swing=moving?Math.sin(m.phase):0;m.legs[0].rotation.x=swing*.4;m.legs[1].rotation.x=-swing*.4;m.arms[0].rotation.x=-swing*.25;m.arms[1].rotation.x=-.2+swing*.15;m.figure.rotation.z=Math.sin(m.phase*.5)*.025}
+
+export function animateMonster(m,dt,moving,chasing=false){
+ if(m.fallback&&!m.ready){m.fallback.rotation.z=Math.sin((m.phase+=dt*2))*.02;return}
+ if(!m.ready)return;
+ m.phase+=dt*(moving?(chasing?8.4:5.4):1.1);
+ const stride=moving?(chasing?.62:.44):0, swing=Math.sin(m.phase), lift=Math.abs(Math.cos(m.phase));
+ if(m.mixer)m.mixer.update(dt);
+ const p=m.parts||{};
+ turn(p.LeftUpLeg,X_AXIS,-swing*stride);
+ turn(p.RightUpLeg,X_AXIS,swing*stride);
+ turn(p.LeftLeg,X_AXIS,-Math.max(0,Math.sin(m.phase+.75))*stride*1.35);
+ turn(p.RightLeg,X_AXIS,-Math.max(0,Math.sin(m.phase+.75+Math.PI))*stride*1.35);
+ // The right arm carries the machete, so it only drifts instead of swinging freely.
+ turn(p.LeftArm,Z_AXIS,swing*stride*.55);
+ turn(p.RightArm,Z_AXIS,-swing*stride*.22);
+ turn(p.LeftForeArm,Z_AXIS,.12+Math.max(0,swing)*.2);
+ turn(p.RightForeArm,X_AXIS,-.28);
+ turn(p.Spine2,X_AXIS,moving?-.05-Math.abs(swing)*.02:-.02);
+ turn(p.Hips,X_AXIS,moving?.03:0);
+ if(p.Neck)turn(p.Neck,Z_AXIS,Math.sin(m.phase*.5)*.045);
+ m.holder.position.y=moving?lift*.035:0;
+ function turn(bone,axis,angle){
+  if(!bone)return;
+  q.setFromAxisAngle(axis,angle);
+  bone.quaternion.premultiply(q);
+ }
+}
