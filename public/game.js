@@ -52,7 +52,7 @@ const monster=createMonster();basement.add(monster.group);monster.group.visible=
 const monsterTarget=new THREE.Vector3();
 let monsterUpdated=0,monsterRotation=0,monsterChasing=false,monsterSleeping=false;
 const lift3d=createLift();
-const held=new THREE.Group();camera.add(held);held.position.set(.34,-.52,-.72);
+const held=new THREE.Group();camera.add(held);held.position.set(.3,-.44,-.62);held.scale.setScalar(1.15);
 let heldWeapon=null;
 const muzzle=new THREE.PointLight(0xffb066,0,6);muzzle.position.set(0,.05,-.9);camera.add(muzzle);
 // A handheld beam keeps the maze readable without turning it bright.
@@ -63,7 +63,7 @@ const torchFill=new THREE.PointLight(0xff9a6a,0,7);camera.add(torchFill);
 
 // ---------------------------------------------------------------- state
 let socket=null,playing=false,selfId=0,selfSlot=0,ownWeapon='akA';
-let coopMode=false,room='main',sessionId=null,n=13,maze=null,spots=[],puzzle={crowbar:false,hammer:false,akA:false,akB:false,nails:false,boards:false,door:false};
+let mazeSeed=0,coopMode=false,room='main',sessionId=null,n=13,maze=null,spots=[],puzzle={crowbar:false,hammer:false,akA:false,akB:false,nails:false,boards:false,door:false};
 let equipped=null,ammo=MAG,reloadUntil=0,shooting=false,lastShot=0;
 let stamina=100,sprinting=false,exhausted=false,toolUseUntil=0,inTransition=false,portalReady=0;
 let vertical=0,jumpVelocity=0,activeTarget=null,lastLiftStart=0;
@@ -103,7 +103,12 @@ const killAudio=new Audio('/audio/kill.mp3');killAudio.preload='auto';
 let musicFailed=false,lastHeart=0;
 monsterMusic.addEventListener('error',()=>{musicFailed=true});
 killAudio.addEventListener('error',()=>{killAudio.dataset.missing='1'});
-function playKill(){if(killAudio.dataset.missing)return playSound('caught');try{killAudio.currentTime=0;killAudio.play().catch(()=>playSound('caught'))}catch{playSound('caught')}}
+let musicMuteUntil=0;
+function playKill(){
+ musicMuteUntil=performance.now()+1500;
+ if(killAudio.dataset.missing)return playSound('caught');
+ try{killAudio.currentTime=0;killAudio.play().catch(()=>playSound('caught'))}catch{playSound('caught')}
+}
 function unlockAudio_(){try{monsterMusic.muted=true;monsterMusic.play().then(()=>{monsterMusic.pause();monsterMusic.muted=false}).catch(()=>{monsterMusic.muted=false})}catch{}}
 function playSound(kind){if(kind==='door')tone(120,.3,'square',.07,60);else if(kind==='caught')tone(58,.5,'sawtooth',.09,36);else if(kind==='tool')tone(300,.12,'square',.06,180);else if(kind==='sleep')tone(70,.9,'sine',.09,34)}
 
@@ -196,7 +201,7 @@ function updateRescue(){
  if(selfDown&&now>rescueTick){rescueTick=now+500;deadText.textContent=`Друг может спасти тебя. Осталось ${clockText(downUntil-Date.now())}`}
 }
 function updateMonsterMusic(){
- const active=room==='basement'&&monster.group.visible&&!monsterSleeping&&!overShown;
+ const active=room==='basement'&&monster.group.visible&&!monsterSleeping&&!overShown&&performance.now()>musicMuteUntil;
  if(!active){if(!monsterMusic.paused)monsterMusic.pause();monsterMusic.volume=0;return}
  const distance=Math.hypot(pos.x-monster.group.position.x,pos.z-monster.group.position.z);
  const volume=THREE.MathUtils.clamp((11-distance)/9,0,1);
@@ -268,7 +273,7 @@ for(const name of ['hammer','crowbar','weapon']){
  button.onclick=()=>{
   const item=name==='weapon'?ownWeapon:name;
   if(!puzzle[item])return;
-  setEquipped(equipped===item?null:item);
+  setEquipped(item);
  }}
 
 // ---------------------------------------------------------------- shooting
@@ -382,9 +387,9 @@ function handle(message){
   case 'waiting':clearInterval(window.choiceCountdown);showDialog('Ждём друга','Когда друг тоже прыгнет в бездну, вы спуститесь вместе.',[['Одному',()=>{modal.hidden=true;send({type:'lift-choice',choice:'solo'})}]]);break;
   case 'lift':{
    clearInterval(window.choiceCountdown);
-   sessionId=message.instance;n=message.n;coopMode=!!message.together;selfSlot=message.slot;ownWeapon=message.own;spots=message.spots;ammo=message.ammo;reloadUntil=0;
+   sessionId=message.instance;n=message.n;mazeSeed=message.seed||0;coopMode=!!message.together;selfSlot=message.slot;ownWeapon=message.own;spots=message.spots;ammo=message.ammo;reloadUntil=0;
    if(maze){basement.remove(maze.group);maze=null}
-   maze=createMaze(n);basement.add(maze.group);placeSpots(maze,spots);updatePuzzle(message.puzzle);
+   maze=createMaze(n,mazeSeed);basement.add(maze.group);placeSpots(maze,spots);updatePuzzle(message.puzzle);
    setEquipped(null,false);monsterUpdated=0;monsterSleeping=false;monster.group.visible=false;
    lift(message.together);
    break}
@@ -415,10 +420,11 @@ function handle(message){
   case 'killed':playKill();break;
   case 'downed':{
    downedOthers.set(message.id,{name:message.name,x:message.x,z:message.z,until:message.until});
-   playKill();
+   if(message.id===selfId)playKill();else tone(190,.5,'sawtooth',.07,90);
    showBanner(`${message.name} убит. У вас ${clockText(message.until-Date.now())}, чтобы его спасти.`);
    break}
   case 'you-downed':{
+   if(!downedOthers.has(selfId))playKill();
    selfDown=true;downUntil=message.until;shooting=false;sprinting=false;move.x=0;move.y=0;
    deadScreen.hidden=false;deadText.textContent=`Друг может спасти тебя. Осталось ${clockText(downUntil-Date.now())}`;
    showBanner('Ты убит. Жди спасения — друг должен найти тебя и зажать «СПАСТИ».');
@@ -439,6 +445,7 @@ function handle(message){
    overShown=true;overScreen.hidden=false;overText.textContent=message.reason||'Майкл победил.';
    deadScreen.hidden=true;rescueButton.hidden=true;rescueBar.hidden=true;break}
   case 'enter-void':setRoom('void');break;
+  case 'spots':{spots=message.spots;if(maze)placeSpots(maze,spots);break}
   case 'puzzle':{
    const hadWeapon=puzzle[ownWeapon];updatePuzzle(message.puzzle);
    if(ownWeapon&&puzzle[ownWeapon]&&!hadWeapon){setEquipped(ownWeapon);notify('Оружие у тебя в руках. Стреляй кнопкой ОГОНЬ.')}

@@ -5,7 +5,7 @@ import { CELL, gridFor, layout, entryFor, doorFor, isSafe, limitFor } from './la
 const WALL=0x574a3f,FLOOR=0x36302a,CEIL=0x2b2521,CORRIDOR=0x41372f;
 export const WEAPON_COLORS={akA:0x9c2b1c,akB:0x1f4f9c};
 
-export function createMaze(n=gridFor(false)){
+export function createMaze(n=gridFor(false),seed=0){
  const group=new THREE.Group(),walls=[],items={},half=(n-1)/2,entry=entryFor(n),size=n*CELL+2;
  const cache=new Map();
  function material(color,metalness=0){const key=`${color}:${metalness}`;if(!cache.has(key))cache.set(key,new THREE.MeshStandardMaterial({color,roughness:.95,metalness}));return cache.get(key)}
@@ -14,7 +14,7 @@ export function createMaze(n=gridFor(false)){
  function wall(x,z,w,d){wallDefs.push({x,z,w,d});walls.push({x,z,w,d})}
  function sphere(parent,r,color,x,y,z){const mesh=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),material(color,.3));mesh.position.set(x,y,z);parent.add(mesh);return mesh}
  box(size,.2,size,0,-.1,0,FLOOR);box(size,.2,size,0,3.6,0,CEIL);
- const cells=layout(n),center=Math.floor(n*n/2);let lampCount=0;
+ const cells=layout(n,seed),center=Math.floor(n*n/2);let lampCount=0;
  for(let z=0;z<n;z++)for(let x=0;x<n;x++){const i=z*n+x,cx=(x-half)*CELL,cz=(z-half)*CELL;
   if(!cells[i].open[0]){if(i===center){wall(cx-1.5,cz-2,.95,.18);wall(cx+1.5,cz-2,.95,.18);box(1.9,.6,.18,cx,3.3,cz-2,WALL)}else wall(cx,cz-2,CELL,.18)}
   if(!cells[i].open[3])wall(cx-2,cz,.18,CELL);

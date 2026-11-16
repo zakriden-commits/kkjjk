@@ -3,9 +3,9 @@ export const CELL=4, GRID=13, COOP_GRID=17, MAZE_LIMIT=21.6;
 export function gridFor(coop){return coop?COOP_GRID:GRID}
 export function limitFor(n){return ((n-1)/2)*CELL}
 export function entryFor(n){return {x:0,z:((n-1)/2)*CELL}}
-export function layout(n=GRID){
+export function layout(n=GRID,seed=0){
  const dirs=[[0,-1],[1,0],[0,1],[-1,0]],cells=Array.from({length:n*n},()=>({seen:false,open:[false,false,false,false]}));
- let seed=(49371+n*7919)>>>0;const rand=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296};
+ let state=(((49371+n*7919)^seed)>>>0)||1;const rand=()=>{state=(state*1664525+1013904223)>>>0;return state/4294967296};
  const center=Math.floor(n*n/2),stack=[n*n-1];cells[stack[0]].seen=true;
  const link=(i,d)=>{const x=i%n,z=Math.floor(i/n),j=(z+dirs[d][1])*n+(x+dirs[d][0]);cells[i].open[d]=true;cells[j].open[(d+2)%4]=true;return j};
  while(stack.length){const i=stack[stack.length-1],x=i%n,z=Math.floor(i/n),options=[];
@@ -37,19 +37,21 @@ export function cellCenter(n,i){const half=(n-1)/2;return {x:(i%n-half)*CELL,z:(
 export function doorFor(){return {x:0,z:-2}}
 // A three-step square around the lift is the only safe ground.
 export function isSafe(n,x,z){const e=entryFor(n);return Math.abs(x)<=1.6&&Math.abs(z-e.z)<=1.9}
-export function randomSpots(n,names,random=Math.random){
- const cells=layout(n),half=(n-1)/2,entry=entryFor(n),center=Math.floor(n*n/2),door=doorFor();
+export function randomSpots(n,names,random=Math.random,seed=0){
+ const cells=layout(n,seed),half=(n-1)/2,entry=entryFor(n),center=Math.floor(n*n/2),door=doorFor();
  const candidates=[];
  for(let i=0;i<cells.length;i++){const {x,z}=cellCenter(n,i);
   // Nothing spawns near the lift or the central door: those are the first places everyone checks.
   if(i===center||isSafe(n,x,z))continue;
   if(Math.hypot(x-entry.x,z-entry.z)<14)continue;
-  if(Math.hypot(x-door.x,z-door.z)<12)continue;
+  if(Math.hypot(x-door.x,z-door.z)<16)continue;
   candidates.push(i)}
  const used=[];
  return names.map(name=>{
-  const options=candidates.filter(i=>!used.includes(i)&&used.every(j=>Math.abs((i%n)-(j%n))+Math.abs(Math.floor(i/n)-Math.floor(j/n))>=3));
-  const i=options[Math.floor(random()*options.length)]||candidates[0];
+  const free=candidates.filter(i=>!used.includes(i));
+  const options=free.filter(i=>used.every(j=>Math.abs((i%n)-(j%n))+Math.abs(Math.floor(i/n)-Math.floor(j/n))>=5));
+  const pool=options.length?options:free.length?free:candidates;
+  const i=pool[Math.floor(random()*pool.length)];
   used.push(i);
   const {x,z}=cellCenter(n,i),closed=cells[i].open.map((open,d)=>open?null:d).filter(d=>d!==null);
   const type=['floor','wall','ceiling'][Math.floor(random()*3)];

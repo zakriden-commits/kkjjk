@@ -27,16 +27,24 @@ const instanceFor=p=>instances.get(p.instance);
 
 function startLift(ids){
  const instance=nextInstance++,coop=ids.length>1,n=gridFor(coop),names=coop?['crowbar','hammer','akA','akB']:['crowbar','hammer','akA'];
- const session={id:instance,n,coop,puzzle:freshPuzzle(),spots:randomSpots(n,names),monster:{x:0,z:-CELL,rotation:0,target:null,until:0,patrol:null,hp:0,sleepUntil:0},slots:new Map()};
+ const seed=Math.floor(Math.random()*1e6),session={id:instance,n,coop,seed,cells:layout(n,seed),puzzle:freshPuzzle(),spots:randomSpots(n,names,Math.random,seed),monster:{x:0,z:-CELL,rotation:0,target:null,until:0,patrol:null,hp:0,sleepUntil:0},slots:new Map()};
  instances.set(instance,session);
  ids.sort((a,b)=>a-b).forEach((id,index)=>session.slots.set(id,index));
  for(const id of ids){const p=players.get(id);if(!p)continue;
   clearTimeout(p.choiceTimer);p.status='lift';p.room='lift';p.instance=instance;p.slot=session.slots.get(id);p.ammo=MAG;p.ammoPool=MAG;p.reloadUntil=0;
   const own=WEAPONS[p.slot];
-  send(p.socket,{type:'lift',together:coop,instance,n,slot:p.slot,own,spots:session.spots,puzzle:session.puzzle,ammo:p.ammo,safe:isSafe(n,0,entryFor(n).z)});
+  send(p.socket,{type:'lift',together:coop,instance,n,seed,slot:p.slot,own,spots:session.spots,puzzle:session.puzzle,ammo:p.ammo,safe:isSafe(n,0,entryFor(n).z)});
   broadcast({type:'move',...publicPlayer(p)},p.socket)}
  if(ids.includes(waiting))waiting=null;
  refreshVoice();
+}
+const RESPAWN=['crowbar','hammer','akA','akB'];
+function respot(session){
+ const names=RESPAWN.filter(name=>!session.puzzle[name]);
+ if(!names.length)return;
+ const fresh=randomSpots(session.n,names,Math.random,session.seed);
+ session.spots=session.spots.map(old=>fresh.find(f=>f.name===old.name)||old);
+ inInstance(session.id,{type:'spots',spots:session.spots});
 }
 function sameVoice(a,b){return a&&b&&a.id!==b.id&&((a.room==='main'&&b.room==='main')||(a.instance!==null&&a.instance===b.instance))}
 function voicePeers(p){return [...players.values()].filter(q=>q.voice&&sameVoice(p,q)).map(q=>q.id)}
@@ -179,7 +187,7 @@ function handleShoot(p){
  if(p.equipped!==WEAPONS[p.slot]||!s.puzzle[p.equipped])return;
  if(now<p.reloadUntil||p.ammo<=0)return;
  p.ammo--;p.noiseUntil=now+600;p.noiseLoudUntil=now+900;
- const m=s.monster,n=s.n,cells=layout(n);
+ const m=s.monster,n=s.n,cells=s.cells||layout(n,s.seed||0);
  const dx=m.x-p.x,dz=m.z-p.z,distance=Math.hypot(dx,dz);
  const facing=Math.atan2(-dx,-dz),diff=Math.abs(Math.atan2(Math.sin(facing-p.rotation),Math.cos(facing-p.rotation)));
  const los=lineOfSight(n,cells,p.x,p.z,m.x,m.z,s.puzzle.door);
@@ -193,11 +201,11 @@ function handleShoot(p){
 }
 
 const CELLS={};
-const cellsFor=n=>CELLS[n]||(CELLS[n]=layout(n));
+const cellsFor=(n,seed=0)=>CELLS[n+':'+seed]||(CELLS[n+':'+seed]=layout(n,seed));
 setInterval(()=>{
  const now=Date.now();
  for(const [id,session] of instances){
-  const {monster:m,n}=session,cells=cellsFor(n),entry=entryFor(n);
+  const {monster:m,n}=session,cells=cellsFor(n,session.seed||0),entry=entryFor(n);
   const targets=instancePlayers(id).filter(p=>p.room==='basement'&&p.status==='playing'&&!p.down&&!isSafe(n,p.x,p.z));
   if(m.sleepUntil>now){inInstance(id,{type:'monster',x:m.x,z:m.z,rotation:m.rotation,chasing:false,sleeping:true});continue}
   if(m.sleepUntil&&m.sleepUntil<=now){m.sleepUntil=0;inInstance(id,{type:'monster-wake'})}
@@ -256,12 +264,12 @@ setInterval(()=>{
     inInstance(id,{type:'downed',id:p.id,name:p.name,x:p.x,z:p.z,until:p.downUntil});
     send(p.socket,{type:'you-downed',until:p.downUntil});
     broadcast({type:'move',...publicPlayer(p)},p.socket);
-    m.waypoint=null;m.rescueTarget=false;m.calmUntil=now+12000;
+    m.waypoint=null;m.rescueTarget=false;m.calmUntil=now+12000;respot(session);
     {let far;let guard=0;do{far=cellCenter(n,Math.floor(Math.random()*n*n));guard++}while(guard<40&&(isSafe(n,far.x,far.z)||Math.hypot(far.x-p.x,far.z-p.z)<10));
      m.target=far;m.until=now+9000}
    }else{
     p.x=p.id%2?-.7:.7;p.z=entry.z-1;p.noiseUntil=0;send(p.socket,{type:'caught',x:p.x,z:p.z});send(p.socket,{type:'killed'});
-    broadcast({type:'move',...publicPlayer(p)},p.socket);m.target=null;m.until=0}
+    broadcast({type:'move',...publicPlayer(p)},p.socket);m.target=null;m.until=0;respot(session)}
    break}
   inInstance(id,{type:'monster',x:m.x,z:m.z,rotation:m.rotation,chasing:!!m.target,sleeping:false});
  }
