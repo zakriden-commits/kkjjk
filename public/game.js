@@ -55,6 +55,11 @@ const lift3d=createLift();
 const held=new THREE.Group();camera.add(held);held.position.set(.34,-.52,-.72);
 let heldWeapon=null;
 const muzzle=new THREE.PointLight(0xffb066,0,6);muzzle.position.set(0,.05,-.9);camera.add(muzzle);
+// A handheld beam keeps the maze readable without turning it bright.
+const torch=new THREE.SpotLight(0xffd3ae,0,26,Math.PI/4.2,.55,1.1);
+torch.position.set(0,0,0);torch.target.position.set(0,-.08,-1);
+camera.add(torch);camera.add(torch.target);
+const torchFill=new THREE.PointLight(0xff9a6a,0,7);camera.add(torchFill);
 
 // ---------------------------------------------------------------- state
 let socket=null,playing=false,selfId=0,selfSlot=0,ownWeapon='akA';
@@ -139,12 +144,14 @@ function setRoom(next){
  $('#hud').classList.toggle('in-void',room==='void');
  mainRoom.visible=room==='main';basement.visible=room==='basement';voidRoom.visible=room==='void';
  $('#void-message').hidden=room!=='void';
- scene.background.set(room==='main'?0x140d0b:room==='basement'?0x0b0806:0x050303);
+ scene.background.set(room==='main'?0x140d0b:room==='basement'?0x17110d:0x050303);
  scene.fog.color.copy(scene.background);
- scene.fog.near=room==='main'?8:room==='basement'?5:6;
- scene.fog.far=room==='main'?27:room==='basement'?15:22;
- ambient.intensity=room==='main'?1.35:room==='basement'?.42:.3;
- light.intensity=room==='main'?1.0:room==='basement'?.14:.1;
+ scene.fog.near=room==='main'?8:room==='basement'?9:6;
+ scene.fog.far=room==='main'?27:room==='basement'?34:22;
+ ambient.intensity=room==='main'?1.35:room==='basement'?1.15:.3;
+ light.intensity=room==='main'?1.0:room==='basement'?.42:.1;
+ torch.intensity=room==='basement'?110:0;
+ torchFill.intensity=room==='basement'?4:0;
  pitLight.intensity=room==='main'?16:0;
  $('#ammo').hidden=room!=='basement'||!ownWeapon;
  $('#fire').hidden=room!=='basement';

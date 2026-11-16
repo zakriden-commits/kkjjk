@@ -2,7 +2,7 @@ import { makeTool, makeWeapon } from './tools.js';
 import * as THREE from 'three';
 import { CELL, gridFor, layout, entryFor, doorFor, isSafe, limitFor } from './layout.js';
 
-const WALL=0x322c26,FLOOR=0x221f1c,CEIL=0x1a1715,CORRIDOR=0x2b2723;
+const WALL=0x574a3f,FLOOR=0x36302a,CEIL=0x2b2521,CORRIDOR=0x41372f;
 export const WEAPON_COLORS={akA:0x9c2b1c,akB:0x1f4f9c};
 
 export function createMaze(n=gridFor(false)){
@@ -13,12 +13,13 @@ export function createMaze(n=gridFor(false)){
  function wall(x,z,w,d){box(w,3.6,d,x,1.8,z,WALL);box(w,.1,d,x,.05,z,CORRIDOR);walls.push({x,z,w,d})}
  function sphere(parent,r,color,x,y,z){const mesh=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),material(color,.3));mesh.position.set(x,y,z);parent.add(mesh);return mesh}
  box(size,.2,size,0,-.1,0,FLOOR);box(size,.2,size,0,3.6,0,CEIL);
- const cells=layout(n),center=Math.floor(n*n/2);
+ const cells=layout(n),center=Math.floor(n*n/2);let lampCount=0;
  for(let z=0;z<n;z++)for(let x=0;x<n;x++){const i=z*n+x,cx=(x-half)*CELL,cz=(z-half)*CELL;
   if(!cells[i].open[0]){if(i===center){wall(cx-1.5,cz-2,.95,.18);wall(cx+1.5,cz-2,.95,.18);box(1.9,.6,.18,cx,3.3,cz-2,WALL)}else wall(cx,cz-2,CELL,.18)}
   if(!cells[i].open[3])wall(cx-2,cz,.18,CELL);
   if(z===n-1)wall(cx,cz+2,CELL,.18);if(x===n-1)wall(cx+2,cz,.18,CELL);
-  if((x+z)%2===0){box(1.1,.04,.22,cx,3.48,cz,0x481009);box(1.0,.02,.12,cx,3.455,cz,0x8d2412)}
+  if((x+z)%2===0){box(1.1,.04,.22,cx,3.48,cz,0x5e170d);box(1.0,.02,.12,cx,3.455,cz,0xb8301a)}
+  if(lampCount<4&&x%5===0&&z%5===0){const lamp=new THREE.PointLight(0xff5a26,6,15,1.5);lamp.position.set(cx,3.15,cz);group.add(lamp);lampCount++}
  }
  // The lift square is the only safe ground; it is a small three-step box.
  for(let x=-1.5;x<=1.5;x+=1)for(let z=-1.5;z<=1.5;z+=1)box(1.02,.016,1.02,entry.x+x,.016,entry.z+z,0x3f5a3c);
@@ -40,7 +41,7 @@ export function createMaze(n=gridFor(false)){
  items.boards=new THREE.Group();group.add(items.boards);items.nails=new THREE.Group();group.add(items.nails);
  for(const [y,angle] of [[.9,.08],[1.8,-.08]]){const plank=box(2.4,.24,.09,door.x,y,door.z+.12,0x3a2a1c,items.boards);plank.rotation.z=angle;
   for(const x of [-.8,.8])sphere(items.nails,.045,0x8d8a7d,door.x+x,y+Math.sin(angle)*x,door.z+.18)}
- items.lamp=new THREE.PointLight(0xff5f2a,9,12);items.lamp.position.set(door.x,2.6,door.z+.9);group.add(items.lamp);
+ items.lamp=new THREE.PointLight(0xff5f2a,13,15,1.4);items.lamp.position.set(door.x,2.6,door.z+.9);group.add(items.lamp);
 
  function pickup(name){const g=new THREE.Group();group.add(g);const pedestal=box(.8,.12,.8,0,.06,0,0x2f2a24,g);pedestal.name='pedestal';
   const model=name==='hammer'||name==='crowbar'?makeTool(name):makeWeapon(WEAPON_COLORS[name]||0x9c2b1c);
