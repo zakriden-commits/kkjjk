@@ -9,7 +9,7 @@ const indexHtml=readFileSync('public/index.html','utf8');
 app.get('/',(req,res)=>{res.set('Cache-Control','no-store');res.type('html').send(indexHtml.replace('/game.js',`/game.js?v=${BUILD}`).replace('/style.css',`/style.css?v=${BUILD}`))});
 app.get('/api/version',(req,res)=>{res.set('Cache-Control','no-store');res.json({build:BUILD})});
 let lastVisit=null;app.get('/api/history',(req,res)=>res.json({lastVisit}));
-function cacheHeaders(res,path){if(path.endsWith('.html'))res.setHeader('Cache-Control','no-store');else if(path.endsWith('.js'))res.setHeader('Cache-Control','no-cache');else res.setHeader('Cache-Control','public, max-age=86400')}
+function cacheHeaders(res,path){if(path.endsWith('.html')||path.endsWith('.webmanifest')||path.endsWith('sw.js'))res.setHeader('Cache-Control','no-store');else if(path.endsWith('.js'))res.setHeader('Cache-Control','no-cache');else res.setHeader('Cache-Control','public, max-age=86400')}
 app.use('/vendor/three/addons',express.static('node_modules/three/examples/jsm',{setHeaders:cacheHeaders}));
 app.use('/vendor/three',express.static('node_modules/three/build',{setHeaders:cacheHeaders}));
 app.use(express.static('public',{setHeaders:cacheHeaders}));

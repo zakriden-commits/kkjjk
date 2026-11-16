@@ -29,5 +29,6 @@
  "lang": "ru",
  "categories": [
   "games"
- ]
+ ],
+ "prefer_related_applications": false
 }

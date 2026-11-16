@@ -38,9 +38,14 @@ export function doorFor(){return {x:0,z:-2}}
 // A three-step square around the lift is the only safe ground.
 export function isSafe(n,x,z){const e=entryFor(n);return Math.abs(x)<=1.6&&Math.abs(z-e.z)<=1.9}
 export function randomSpots(n,names,random=Math.random){
- const cells=layout(n),half=(n-1)/2,entry=entryFor(n),center=Math.floor(n*n/2),limit=(n-1)/2;
+ const cells=layout(n),half=(n-1)/2,entry=entryFor(n),center=Math.floor(n*n/2),door=doorFor();
  const candidates=[];
- for(let i=0;i<cells.length;i++){const {x,z}=cellCenter(n,i);if(i===center||isSafe(n,x,z)||Math.hypot(x-entry.x,z-entry.z)<12)continue;candidates.push(i)}
+ for(let i=0;i<cells.length;i++){const {x,z}=cellCenter(n,i);
+  // Nothing spawns near the lift or the central door: those are the first places everyone checks.
+  if(i===center||isSafe(n,x,z))continue;
+  if(Math.hypot(x-entry.x,z-entry.z)<14)continue;
+  if(Math.hypot(x-door.x,z-door.z)<12)continue;
+  candidates.push(i)}
  const used=[];
  return names.map(name=>{
   const options=candidates.filter(i=>!used.includes(i)&&used.every(j=>Math.abs((i%n)-(j%n))+Math.abs(Math.floor(i/n)-Math.floor(j/n))>=3));

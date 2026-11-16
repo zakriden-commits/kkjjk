@@ -537,11 +537,19 @@ function fall(){
 }
 preloadCharacters();
 // Installable app: on Android this opens without the browser address bar.
-if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 let installPrompt=null;const installButton=$('#install-btn');
-addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;if(installButton)installButton.hidden=false});
-if(window.matchMedia('(display-mode: standalone)').matches&&installButton)installButton.hidden=true;
+const isApple=/iPhone|iPad|iPod/i.test(navigator.userAgent);
+addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event});
 installButton?.addEventListener('click',async()=>{
- if(installPrompt){installPrompt.prompt();try{await installPrompt.userChoice}catch{}installPrompt=null;installButton.hidden=true;return}
- $('#status').textContent='Открой меню браузера (⋮) → «Установить приложение» или «Добавить на главный экран».'});
+ if(installPrompt){
+  installPrompt.prompt();
+  try{await installPrompt.userChoice}catch{}
+  installPrompt=null;return;
+ }
+ showDialog('Установить на телефон',isApple
+  ?'Нажми «Поделиться» (квадрат со стрелкой внизу) и выбери «На экран Домой». Игра откроется с иконки, без строки браузера.'
+  :'Открой меню браузера (три точки ⋮ справа сверху) и выбери «Установить приложение» или «Добавить на главный экран». После этого игра запускается с иконки, без адресной строки, и работает онлайн.',
+  [['Понятно',()=>modal.hidden=true]]);
+});
 requestAnimationFrame(frame);
