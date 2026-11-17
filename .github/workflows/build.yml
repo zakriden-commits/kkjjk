@@ -8,6 +8,9 @@ jobs:
   build:
     runs-on: ubuntu-24.04
 
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -29,3 +32,17 @@ jobs:
           name: chicken-jump-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Commit APK to repo
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/chicken-jump-debug.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/chicken-jump-debug.apk
+          if git diff --cached --quiet; then
+            echo "APK unchanged, nothing to commit"
+          else
+            git commit -m "Add built APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
