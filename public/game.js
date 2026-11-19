@@ -22,6 +22,8 @@ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-per
 renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
 renderer.setSize(innerWidth,innerHeight);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.05;
 $('#game').append(renderer.domElement);
 const ambient=new THREE.HemisphereLight(0xff8a5c,0x140707,1.4);
 scene.add(ambient);
@@ -71,7 +73,7 @@ let mazeSeed=0,coopMode=false,room='main',sessionId=null,n=13,maze=null,spots=[]
 let equipped=null,ammo=MAG,reloadUntil=0,shooting=false,lastShot=0;
 let stamina=100,sprinting=false,exhausted=false,toolUseUntil=0,inTransition=false,portalReady=0;
 let vertical=0,jumpVelocity=0,activeTarget=null,lastLiftStart=0;
-let selfDown=false,downUntil=0,overShown=false,rescueHolding=false,mapOpen=false,rpgReadyAt=0;
+let selfDown=false,downUntil=0,overShown=false,rescueHolding=false,mapOpen=false,rpgReadyAt=0,cctvOpen=false,cctvIndex=0;
 const downedOthers=new Map();
 let yaw=0,pitch=0,pos=new THREE.Vector3(4.5,1.65,0),keys={},move={x:0,y:0};
 const others=new Map();
@@ -165,6 +167,7 @@ function lift(together){
  setTimeout(()=>{screen.hidden=true;lastLiftStart=0;setRoom('basement');send({type:'lift-arrived'});inTransition=false},5500)}
 function setRoom(next){
  room=next;
+ if(room!=='basement'){cctvOpen=false;cctvScreen.hidden=true;mapOpen=false;mapScreen.hidden=true}
  $('#hud').classList.toggle('in-void',room==='void');
  mainRoom.visible=room==='main';basement.visible=room==='basement';voidRoom.visible=room==='void';
  $('#void-message').hidden=room!=='void';
@@ -270,6 +273,7 @@ function updateInventory(){
  if(rpgButton){rpgButton.disabled=!puzzle.rpg;rpgButton.classList.toggle('selected',equipped==='rpg')}
  const cameraKey=selfSlot?'cameraB':'cameraA';
  $('#camera-btn').hidden=!puzzle[cameraKey]||room!=='basement';
+ const camSlot=$('#slot-camera');if(camSlot)camSlot.disabled=!puzzle[cameraKey]||room!=='basement';
  $('#ammo').textContent=equipped==='rpg'&&rpgReadyAt>performance.now()
   ?`перезарядка ${Math.ceil((rpgReadyAt-performance.now())/1000)} с`
   :equipped==='rpg'?'1 / 1':`${ammo} / ${MAG}`;
@@ -284,12 +288,19 @@ function updateAction(){
  const near=(x,z)=>Math.hypot(pos.x-x,pos.z-z)<2.8;
  const spot=name=>spots.find(s=>s.name===name);
  const available=name=>spot(name)&&!puzzle[name]&&near(spot(name).x,spot(name).z);
- activeTarget=available('hammer')?'hammer':available('crowbar')?'crowbar':
-  WEAPONS.some(w=>available(w)&&w===ownWeapon)?ownWeapon:
+ const cameraKey=selfSlot?'cameraB':'cameraA';
+ const otherCamera=selfSlot?'cameraA':'cameraB';
+ activeTarget=available(ownWeapon)?ownWeapon:
+  available('hammer')?'hammer':available('crowbar')?'crowbar':
+  available('rpg')?'rpg':available(cameraKey)?cameraKey:
   WEAPONS.some(w=>available(w))?'other-weapon':
+  available(otherCamera)?'other-camera':
   near(0,-1.2)?'door':near(-2.6,(n-1)/2*4+2-.14)?'rules':null;
  action.hidden=!activeTarget;
- action.textContent=({rules:'Правила',hammer:'Взять молоток',crowbar:'Взять гвоздодёр',akA:'Взять красный АК-47',akB:'Взять синий АК-47','other-weapon':'Чужое оружие',door:'Осмотреть дверь'})[activeTarget]||'';
+ action.textContent=({rules:'Правила',hammer:'Взять молоток',crowbar:'Взять гвоздодёр',
+  akA:'Взять красный АК-47',akB:'Взять синий АК-47',rpg:'Взять РПГ',
+  cameraA:'Взять камеру',cameraB:'Взять камеру',
+  'other-weapon':'Чужое оружие','other-camera':'Чужая камера',door:'Осмотреть дверь'})[activeTarget]||'';
 }
 action.onclick=()=>{
  if(!activeTarget)return;
@@ -300,10 +311,27 @@ action.onclick=()=>{
    [['Понятно',()=>modal.hidden=true]]);
   return}
  if(activeTarget==='other-weapon'){notify('Это оружие второго игрока. Возьми своё.');return}
+ if(activeTarget==='other-camera'){notify('Это камера второго игрока. Ищи свою.');return}
  send({type:'interact',target:activeTarget});
  if(activeTarget==='akA'||activeTarget==='akB')toolUseUntil=performance.now()+0;
 };
 $('#slot-rpg').onclick=()=>{if(!puzzle.rpg)return;setEquipped('rpg');updateInventory()};
+const cctvScreen=$('#cctv'),cctvLabel=$('#cctv-label');
+function cctvList(){return (maze&&maze.cameras)||[]}
+function activeCctv(){const list=cctvList();return list.length?list[Math.min(cctvIndex,list.length-1)]:null}
+function refreshCctvLabel(){const view=activeCctv();cctvLabel.textContent=view?view.label:'НЕТ КАМЕР'}
+function openCCTV(){
+ const mine=puzzle[selfSlot?'cameraB':'cameraA'];
+ if(!mine){notify('Сначала найди камеру в лабиринте.');return}
+ mapOpen=false;mapScreen.hidden=true;
+ cctvOpen=true;cctvScreen.hidden=false;refreshCctvLabel();
+}
+function closeCCTV(){cctvOpen=false;cctvScreen.hidden=true}
+function cycleCCTV(step){const list=cctvList();if(!list.length)return;cctvIndex=(cctvIndex+step+list.length)%list.length;refreshCctvLabel()}
+$('#cctv-close').onclick=()=>closeCCTV();
+$('#cctv-prev').onclick=()=>cycleCCTV(-1);
+$('#cctv-next').onclick=()=>cycleCCTV(1);
+$('#cctv-plan').onclick=()=>{closeCCTV();mapOpen=true;mapScreen.hidden=false;drawMiniMap()};
 const mapScreen=$('#map-screen'),mapCanvas=$('#map-canvas');
 function drawMiniMap(){
  const card=mapCanvas.parentElement||mapScreen;
@@ -317,8 +345,9 @@ function drawMiniMap(){
   monster:{x:monster.group.position.x,z:monster.group.position.z,sleeping:monsterSleeping},
   spots,puzzle});
 }
-$('#camera-btn').onclick=()=>{mapOpen=true;mapScreen.hidden=false;drawMiniMap()};
-$('#map-close').onclick=()=>{mapOpen=false;mapScreen.hidden=true};
+$('#camera-btn').onclick=()=>openCCTV();
+$('#slot-camera').onclick=()=>openCCTV();
+$('#map-close').onclick=()=>{mapOpen=false;mapScreen.hidden=true;if(puzzle[selfSlot?'cameraB':'cameraA'])openCCTV()};
 for(const name of ['hammer','crowbar','weapon']){
  const button=$(`#slot-${name}`);
  button.onclick=()=>{
@@ -452,7 +481,7 @@ function handle(message){
    clearInterval(window.choiceCountdown);
    sessionId=message.instance;n=message.n;mazeSeed=message.seed||0;coopMode=!!message.together;selfSlot=message.slot;ownWeapon=message.own;spots=message.spots;ammo=message.ammo;reloadUntil=0;
    if(maze){basement.remove(maze.group);maze=null}
-   maze=createMaze(n,mazeSeed);basement.add(maze.group);placeSpots(maze,spots);updatePuzzle(message.puzzle);
+   maze=createMaze(n,mazeSeed);basement.add(maze.group);cctvIndex=0;cctvOpen=false;cctvScreen.hidden=true;placeSpots(maze,spots);updatePuzzle(message.puzzle);
    setEquipped(null,false);monsterUpdated=0;monsterSleeping=false;monster.group.visible=false;
    lift(message.together);
    break}
@@ -539,7 +568,10 @@ function frame(now){
  if(playing){updateGame(now,dt)}else{updateLobby(now,dt)}
  if(inTransition&&lastLiftStart)lift3d.update((now-lastLiftStart)/1000,dt);
  if(inTransition&&lastLiftStart)renderer.render(lift3d.scene,lift3d.camera);
- else renderer.render(playing?scene:lobbyScene,playing?camera:lobbyCamera);
+ else if(cctvOpen&&activeCctv()){
+  const view=activeCctv().camera;view.aspect=innerWidth/innerHeight;view.updateProjectionMatrix();
+  renderer.render(scene,view);
+ }else renderer.render(playing?scene:lobbyScene,playing?camera:lobbyCamera);
 }
 function updateLobby(now,dt){
  lobbyTime+=dt;
@@ -556,7 +588,7 @@ function updateGame(now,dt){
  let x=move.x+(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
  let y=move.y+(keys.KeyS||keys.ArrowDown?1:0)-(keys.KeyW||keys.ArrowUp?1:0);
  const length=Math.hypot(x,y);if(length>1){x/=length;y/=length}
- if(inTransition||!modal.hidden||!settings.hidden||selfDown||overShown||mapOpen){x=0;y=0}
+ if(inTransition||!modal.hidden||!settings.hidden||selfDown||overShown||mapOpen||cctvOpen){x=0;y=0}
  const running=(sprinting||keys.ShiftLeft||keys.ShiftRight)&&!exhausted&&stamina>0&&Math.hypot(x,y)>.1&&!inTransition&&modal.hidden&&settings.hidden;
  stamina=THREE.MathUtils.clamp(stamina+(running?-24:14)*dt,0,100);
  if(stamina<=0)exhausted=true;else if(stamina>=25)exhausted=false;
@@ -573,7 +605,7 @@ function updateGame(now,dt){
  camera.position.copy(pos);camera.position.y+=vertical;
  if(selfDown)camera.position.y=.55;
  camera.rotation.order='YXZ';camera.rotation.set(pitch,yaw,0);
- if(selfDown||overShown||mapOpen){shooting=false;rescueHolding=false}
+ if(selfDown||overShown||mapOpen||cctvOpen){shooting=false;rescueHolding=false}
  if(shooting&&now-lastShot>115)fireOnce();
  if(now-lastSend>50&&socket?.readyState===WebSocket.OPEN){
   socket.send(JSON.stringify({type:'move',x:pos.x,z:pos.z,rotation:yaw,room,y:vertical,running}));lastSend=now}
@@ -592,7 +624,9 @@ function updateGame(now,dt){
   animateMonster(monster,dt,moving,monsterChasing,monsterSleeping);
  }
  held.visible=room==='basement'&&!!equipped;
- held.position.y=-.5+Math.sin(now*.0016)*.006+(equipped&&WEAPONS.includes(equipped)?-.02:0);
+ const bobSpeed=stamina<100?9:6;
+ held.position.y=-.44+Math.sin(now*.0016)*.006+(equipped&&WEAPONS.includes(equipped)?-.02:0)+Math.sin(now*.006*bobSpeed/6)*.004;
+ held.position.x=.3+Math.sin(now*.003)*.004;
  held.rotation.x=(toolUseUntil>now&&!WEAPONS.includes(equipped||''))?Math.sin((toolUseUntil-now)/650*Math.PI)*-.9:0;
  if(Math.hypot(x,y)>.1&&!inTransition&&modal.hidden&&settings.hidden&&now-(window.lastFootstep||0)>(running?290:500)){footstep(running);window.lastFootstep=now}
  updateAction();

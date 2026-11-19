@@ -46,6 +46,26 @@ export function createMaze(n=gridFor(false),seed=0){
  ctx.font='30px Arial';ctx.fillStyle='#e8c9b6';ctx.fillText(coop?'Вдвоём: 4 предмета':'Один: 3 предмета',256,158);ctx.fillText(coop?'Оружие у каждого своё':'Не шуми, он слышит',256,200);
  const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.3,.74),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas)}));
  sign.position.set(entry.x-2.6,1.65,signZ-.08);sign.rotation.y=Math.PI;group.add(sign);
+ // Wall mounted CCTV cameras in the far corners. They are the eyes of the maze.
+ const cameras=[];
+ const corners=[[1,1],[n-2,1],[1,n-2],[n-2,n-2]];
+ corners.forEach(([cx,cz],index)=>{
+  const x=(cx-half)*CELL, z=(cz-half)*CELL;   // mounted at the top of the corner cell
+  const housing=new THREE.Group();group.add(housing);
+  const shell=new THREE.Mesh(new THREE.BoxGeometry(.26,.18,.46),material(0x1a1c1e,.4));housing.add(shell);
+  const hood=new THREE.Mesh(new THREE.BoxGeometry(.3,.05,.5),material(0x121415,.3));hood.position.y=.12;housing.add(hood);
+  const glass=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.1,14),new THREE.MeshStandardMaterial({color:0x0b1114,metalness:.9,roughness:.15}));
+  glass.rotation.x=Math.PI/2;glass.position.z=.24;housing.add(glass);
+  const led=new THREE.Mesh(new THREE.SphereGeometry(.014,8,6),new THREE.MeshStandardMaterial({color:0x6d1208,emissive:0xff2a08,emissiveIntensity:.45}));
+  led.position.set(.09,.07,.16);housing.add(led);
+  const target=new THREE.Vector3(0,1.1,0);
+  housing.position.set(x,3.02,z);housing.lookAt(target);
+  const camera=new THREE.PerspectiveCamera(64,16/9,.1,70);camera.position.set(x,3.05,z);
+  const dir=target.clone().sub(new THREE.Vector3(x,3.05,z)).normalize();
+  camera.position.addScaledVector(dir,.3);
+  camera.lookAt(target);
+  cameras.push({label:`КАМЕРА ${index+1}`,camera,group:housing});
+ });
  // One central door with a solid wall behind it: opening it teleports to level three.
  const door=doorFor();
  // A shallow lit chamber sits behind the doorway, so an opened door leads somewhere.
@@ -76,7 +96,7 @@ export function createMaze(n=gridFor(false),seed=0){
    :makeWeapon(WEAPON_COLORS[name]||0x9c2b1c);
   model.name='tool';model.position.y=.15;g.add(model);g.visible=false;return g}
  for(const name of PICKUPS)items[name]=pickup(name);
- return {group,walls,items,n,entry,door,cells}
+ return {group,walls,items,cameras,n,entry,door,cells}
 }
 
 export function placeSpots(maze,spots){

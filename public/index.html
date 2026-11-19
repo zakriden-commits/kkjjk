@@ -35,6 +35,7 @@
   <button id="slot-crowbar" disabled><img src="/crowbar.svg" alt="">Гвоздодёр</button>
   <button id="slot-weapon" disabled><img src="/ak.svg" alt=""><span>АК-47</span></button>
   <button id="slot-rpg" disabled><span>РПГ</span></button>
+  <button id="slot-camera" disabled><span>КАМЕРА</span></button>
  </div>
  <button id="mic" hidden type="button">🎙 Выкл</button>
  <button id="rescue" hidden type="button">СПАСТИ</button>
@@ -47,6 +48,15 @@
  <div id="joystick"><div id="stick"></div></div>
 </div>
 <div id="settings" hidden><div class="dialog"><h2>Настройки</h2><label class="voice-label"><input id="voice-enabled" type="checkbox"> Включить голосовой чат</label><p>Нужно разрешить доступ к микрофону. После включения он остаётся выключенным, пока не нажмёшь кнопку микрофона в игре.</p><button id="settings-close">Закрыть</button></div></div>
+<div id="cctv" hidden>
+ <div class="cctv-bar">
+  <button id="cctv-prev" type="button">‹</button>
+  <span id="cctv-label">КАМЕРА 1</span>
+  <button id="cctv-next" type="button">›</button>
+ </div>
+ <div class="cctv-actions"><button id="cctv-plan" type="button">ПЛАН</button><button id="cctv-close" type="button">✕</button></div>
+ <div class="cctv-scan"></div>
+</div>
 <div id="map-screen" hidden><div class="map-card"><div class="map-head"><strong>КАМЕРА</strong><button id="map-close" type="button">✕</button></div><canvas id="map-canvas"></canvas><div class="map-legend"><span><i class="lg-self"></i>ты</span><span><i class="lg-mon"></i>Майкл</span><span><i class="lg-item"></i>предмет</span><span><i class="lg-door"></i>дверь</span></div></div></div>
 <div id="modal" hidden><div class="dialog"><h2 id="modal-title"></h2><p id="modal-text"></p><div id="modal-buttons"></div></div></div>
 <div id="lift-screen" hidden><p id="lift-text">Лифт спускается...</p></div>

@@ -26,6 +26,10 @@ export function makeWeapon(color=0x8f2f22){
  plate(.02,.04,.05,metal,0,.12,.05);            // rear sight
  plate(.02,.02,.20,metal,.055,.02,.10);         // side rail
  tube(.02,.06,metal,.02,-.08,.20);              // sling loop
+ // trigger guard, bolt and sling keep it from looking like plain boxes
+ const guard=new THREE.Mesh(new THREE.TorusGeometry(.045,.008,6,12,Math.PI),metal);guard.rotation.set(Math.PI/2,0,Math.PI);guard.position.set(0,-.12,.05);g.add(guard);
+ const bolt=new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,.09,8),metal);bolt.rotation.z=Math.PI/2;bolt.position.set(.06,.03,-.02);g.add(bolt);
+ const knob=new THREE.Mesh(new THREE.SphereGeometry(.02,8,6),metal);knob.position.set(.11,.03,-.02);g.add(knob);
  g.scale.setScalar(1.05);
  return g;
 }
@@ -44,6 +48,9 @@ export function makeRPG(){
  grip(.05,.16,.06,0,-.12,-.16);grip(.05,.14,.06,0,-.11,.12);
  const sight=new THREE.Mesh(new THREE.BoxGeometry(.03,.10,.05),metal);sight.position.set(0,.12,.02);g.add(sight);
  const band=new THREE.Mesh(new THREE.TorusGeometry(.078,.012,8,18),red);band.position.set(0,0,.22);g.add(band);
+ for(const z of [-.28,-.08,.14]){const ring=new THREE.Mesh(new THREE.TorusGeometry(.079,.008,6,16),dark);ring.position.set(0,0,z);g.add(ring)}
+ const trigger=new THREE.Mesh(new THREE.TorusGeometry(.03,.006,6,10,Math.PI),metal);trigger.rotation.set(Math.PI/2,0,Math.PI);trigger.position.set(0,-.16,.02);g.add(trigger);
+ const frontSight=new THREE.Mesh(new THREE.BoxGeometry(.02,.09,.02),metal);frontSight.position.set(0,.11,.34);g.add(frontSight);
  g.scale.setScalar(.95);
  return g;
 }
