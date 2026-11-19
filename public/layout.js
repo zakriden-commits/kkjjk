@@ -1,4 +1,4 @@
-export const CELL=4, GRID=13, COOP_GRID=17, MAZE_LIMIT=21.6;
+export const CELL=4, GRID=15, COOP_GRID=19, MAZE_LIMIT=21.6;
 // The maze is mirrored by the server and the browser, so it must stay deterministic.
 export function gridFor(coop){return coop?COOP_GRID:GRID}
 export function limitFor(n){return ((n-1)/2)*CELL}
@@ -16,13 +16,13 @@ export function layout(n=GRID,seed=0){
   if(!options.length){stack.pop();continue}
   const [d,j]=options[Math.floor(rand()*options.length)];cells[i].open[d]=true;cells[j].open[(d+2)%4]=true;cells[j].seen=true;stack.push(j)}
  // Rooms and extra passages: a maze that is only dead ends feels cheap.
- const rooms=n>=15?5:3;
+ const rooms=n>=17?8:5;
  for(let r=0;r<rooms;r++){
   const ax=1+Math.floor(rand()*(n-3)),az=2+Math.floor(rand()*(n-4));
   if(Math.abs(ax-(n-1)/2)<2&&Math.abs(az-(n-1)/2)<2)continue;
   link(az*n+ax,1);link((az+1)*n+ax,1);link(az*n+ax,2);link(az*n+ax+1,2);
  }
- const extra=Math.floor(n*n*.09);
+ const extra=Math.floor(n*n*.16);
  for(let k=0;k<extra;k++){
   const i=Math.floor(rand()*n*n),x=i%n,z=Math.floor(i/n),d=Math.floor(rand()*4);
   const nx=x+dirs[d][0],nz=z+dirs[d][1];
@@ -30,6 +30,22 @@ export function layout(n=GRID,seed=0){
   const j=nz*n+nx;
   if((i===center&&j===center-n)||(i===center-n&&j===center))continue;
   link(i,d);
+ }
+ // No long dead ends: every corridor that ends blindly gets punched through.
+ for(let pass=0;pass<3;pass++){
+  for(let i=0;i<n*n;i++){
+   const exits=cells[i].open.filter(Boolean).length;
+   if(exits!==1)continue;
+   const x=i%n,z=Math.floor(i/n);
+   for(let d=0;d<4;d++){
+    if(cells[i].open[d])continue;
+    const nx=x+dirs[d][0],nz=z+dirs[d][1];
+    if(nx<0||nx>=n||nz<0||nz>=n)continue;
+    const j=nz*n+nx;
+    if((i===center&&j===center-n)||(i===center-n&&j===center))continue;
+    link(i,d);break;
+   }
+  }
  }
  return cells;
 }

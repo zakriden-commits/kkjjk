@@ -69,9 +69,26 @@ export function animateMonster(m,dt,moving,chasing=false,sleeping=false){
  m.phase+=dt*(moving?(chasing?8.4:5.4):1.1);
  const stride=moving?(chasing?.62:.44):0, swing=Math.sin(m.phase), lift=Math.abs(Math.cos(m.phase));
  if(m.mixer)m.mixer.update(dt);
- m.holder.rotation.z+=((sleeping?1.45:0)-m.holder.rotation.z)*Math.min(1,dt*4);
- m.holder.rotation.x+=((sleeping?-.1:0)-m.holder.rotation.x)*Math.min(1,dt*4);
- if(sleeping){m.holder.position.y=0;return}
+ // He drops like a sack of potatoes: fast, with a small bounce, then lies still.
+ const phase=m.sleepPhase||0;
+ if(sleeping){
+  m.sleepPhase=Math.min(1,phase+dt*2.6);
+  const p=m.sleepPhase,out=1-Math.pow(1-p,3),bounce=Math.sin(p*Math.PI*2.6)*.12*(1-p);
+  m.holder.rotation.z=(1.5*out)+bounce;
+  m.holder.rotation.x=-.12*out;
+  m.holder.position.y=-.32*out+Math.sin(p*Math.PI)*.06;
+  if(m.bones){
+   const set=(bone,x,z)=>{if(!bone)return;bone.rotation.x+=(x-bone.rotation.x)*Math.min(1,dt*6);bone.rotation.z+=(z-bone.rotation.z)*Math.min(1,dt*6)};
+   set(m.bones.LeftArm,0.2,1.1);set(m.bones.RightArm,0.2,-1.1);
+   set(m.bones.LeftUpLeg,.1,.25);set(m.bones.RightUpLeg,.1,-.25);
+   set(m.bones.Head,-.3,0);
+  }
+  return
+ }
+ m.sleepPhase=Math.max(0,phase-dt*3);
+ m.holder.rotation.z+=((m.sleepPhase?1.5*m.sleepPhase:0)-m.holder.rotation.z)*Math.min(1,dt*8);
+ m.holder.rotation.x+=((m.sleepPhase?-.12*m.sleepPhase:0)-m.holder.rotation.x)*Math.min(1,dt*8);
+ m.holder.position.y+=((m.sleepPhase?-.32*m.sleepPhase:0)-m.holder.position.y)*Math.min(1,dt*8);
  const p=m.parts||{};
  turn(p.LeftUpLeg,X_AXIS,-swing*stride);
  turn(p.RightUpLeg,X_AXIS,swing*stride);

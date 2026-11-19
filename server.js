@@ -17,7 +17,7 @@ app.use(express.static('public',{setHeaders:cacheHeaders}));
 const server=createServer(app),wss=new WebSocketServer({server}),players=new Map(),instances=new Map();
 let nextId=1,nextInstance=1,waiting=null;
 const WEAPONS=['akA','akB'],WEAPON_NAMES={akA:'красный АК-47',akB:'синий АК-47'},MAG=30,SLEEP_MS=15000,HITS_TO_SLEEP=10,RESCUE_MS=120000,REVIVE_MS=15000;
-const freshPuzzle=()=>({crowbar:false,hammer:false,akA:false,akB:false,nails:false,boards:false,door:false});
+const freshPuzzle=()=>({crowbar:false,hammer:false,akA:false,akB:false,rpg:false,cameraA:false,cameraB:false,nails:false,boards:false,door:false});
 const send=(socket,data)=>{if(socket?.readyState===1)socket.send(JSON.stringify(data))};
 const broadcast=(data,except)=>{for(const c of wss.clients)if(c!==except)send(c,data)};
 const inInstance=(id,data,except)=>{for(const p of players.values())if(p.instance===id&&p.socket!==except)send(p.socket,data)};
@@ -26,7 +26,7 @@ const publicPlayer=p=>{const {socket,status,choiceTimer,noiseUntil,noiseLoudUnti
 const instanceFor=p=>instances.get(p.instance);
 
 function startLift(ids){
- const instance=nextInstance++,coop=ids.length>1,n=gridFor(coop),names=coop?['crowbar','hammer','akA','akB']:['crowbar','hammer','akA'];
+ const instance=nextInstance++,coop=ids.length>1,n=gridFor(coop),names=coop?['crowbar','hammer','akA','akB','rpg','cameraA','cameraB']:['crowbar','hammer','akA','rpg','cameraA'];
  const seed=Math.floor(Math.random()*1e6),session={id:instance,n,coop,seed,cells:layout(n,seed),puzzle:freshPuzzle(),spots:randomSpots(n,names,Math.random,seed),monster:{x:0,z:-CELL,rotation:0,target:null,until:0,patrol:null,hp:0,sleepUntil:0},slots:new Map()};
  instances.set(instance,session);
  ids.sort((a,b)=>a-b).forEach((id,index)=>session.slots.set(id,index));
@@ -38,7 +38,7 @@ function startLift(ids){
  if(ids.includes(waiting))waiting=null;
  refreshVoice();
 }
-const RESPAWN=['crowbar','hammer','akA','akB'];
+const RESPAWN=['crowbar','hammer','akA','akB','rpg','cameraA','cameraB'];
 function respot(session){
  const names=RESPAWN.filter(name=>!session.puzzle[name]);
  if(!names.length)return;
@@ -121,9 +121,9 @@ wss.on('connection',(socket,request)=>{
    broadcast({type:'move',...publicPlayer(p)},socket);
   }else if(m.type==='equip'){
    const s=instanceFor(p);if(!s||p.room!=='basement')return;
-   const item=['hammer','crowbar','akA','akB'].includes(m.item)?m.item:null;
+   const item=['hammer','crowbar','akA','akB','rpg'].includes(m.item)?m.item:null;
    if(item&&!s.puzzle[item])return;
-   if(item===WEAPONS[1-p.slot])return;
+   if(item&&WEAPONS.includes(item)&&item!==WEAPONS[p.slot])return;
    p.equipped=item;broadcast({type:'equip',id,item,instance:p.instance},socket);
   }else if(m.type==='interact'){
    handleInteract(p,m,socket);
@@ -137,8 +137,15 @@ wss.on('connection',(socket,request)=>{
    const s=instanceFor(p);if(!s||p.room!=='basement'||!p.equipped||!WEAPONS.includes(p.equipped))return;
    if(p.ammo>=MAG||p.reloadUntil>Date.now())return;
    p.reloadUntil=Date.now()+1700;send(socket,{type:'reload',until:p.reloadUntil});
+   setTimeout(()=>{const cur=players.get(id);if(cur&&cur.ammo<MAG){cur.ammo=MAG;cur.reloadUntil=0;send(cur.socket,{type:'ammo',ammo:cur.ammo,reloading:false})}},1760);
   }else if(m.type==='shoot'){
    handleShoot(p);
+  }else if(m.type==='rpg'){
+   handleRPG(p);
+  }else if(m.type==='camera'){
+   const s2=instanceFor(p);if(!s2||p.room!=='basement')return;
+   const mine=p.slot?'cameraB':'cameraA';
+   send(socket,{type:'camera',ok:!!s2.puzzle[mine],spots:s2.spots,puzzle:s2.puzzle});
   }else if(m.type==='voice-ready'){
    p.voice=!!m.enabled;refreshVoice();
   }else if(m.type==='voice-signal'){
@@ -159,7 +166,13 @@ function handleInteract(p,m,socket){
  let result='',used=null,enter=false;
  const spot=name=>s.spots.find(item=>item.name===name);
  const pick=(name,label)=>{if(puzzle[name]||!near(spot(name).x,spot(name).z))return false;puzzle[name]=true;result=label;used=name;if(name===own){p.equipped=name;broadcast({type:'equip',id:p.id,item:name,instance:p.instance},socket)}return true};
- if(m.target==='hammer'||m.target==='crowbar'||m.target==='akA'||m.target==='akB'){
+ if(m.target==='cameraA'||m.target==='cameraB'){
+  const mine=m.target===(p.slot?'cameraB':'cameraA');
+  if(!mine){send(socket,{type:'message',text:'Это камера второго игрока. Ищи свою.'});return}
+  if(pick(m.target,'Камера найдена! Нажми «КАМЕРА», чтобы посмотреть лабиринт.'))p.equipped=null;
+ }else if(m.target==='rpg'){
+  if(pick('rpg','РПГ найдена! Один выстрел, перезарядка 10 секунд.')){p.equipped='rpg';broadcast({type:'equip',id:p.id,item:'rpg',instance:p.instance},socket);send(socket,{type:'equip',id:p.id,item:'rpg'})}
+ }else if(m.target==='hammer'||m.target==='crowbar'||m.target==='akA'||m.target==='akB'){
   if((m.target==='akA'||m.target==='akB')&&m.target!==own){send(socket,{type:'message',text:`Это ${WEAPON_NAMES[m.target]} второго игрока. Возьми своё оружие.`});return}
   if(m.target==='hammer')pick('hammer','Молоток найден!');
   else if(m.target==='crowbar')pick('crowbar','Гвоздодёр найден!');
@@ -183,10 +196,31 @@ function handleInteract(p,m,socket){
   if(used){p.noiseUntil=Date.now()+5000;p.noiseLoudUntil=Date.now()+5000;inInstance(p.instance,{type:'use-tool',id:p.id,item:used})}}
 }
 
+function handleRPG(p){
+ const s=instanceFor(p);if(!s||p.room!=='basement'||p.equipped!=='rpg'||!s.puzzle.rpg)return;
+ const now=Date.now();
+ if(now<(p.rpgUntil||0))return;
+ p.rpgUntil=now+10000;
+ p.noiseLoudUntil=now+7000;p.noiseUntil=now+7000;
+ const m=s.monster,n=s.n,cells=s.cells||layout(n,s.seed||0);
+ const dx=m.x-p.x,dz=m.z-p.z,distance=Math.hypot(dx,dz);
+ const facing=Math.atan2(-dx,-dz),diff=Math.abs(Math.atan2(Math.sin(facing-p.rotation),Math.cos(facing-p.rotation)));
+ const los=lineOfSight(n,cells,p.x,p.z,m.x,m.z,s.puzzle.door);
+ const hit=distance<26&&diff<.5&&los;
+ const x=hit?m.x:p.x-Math.sin(p.rotation)*6,z=hit?m.z:p.z-Math.cos(p.rotation)*6;
+ if(hit){
+  m.hp=0;m.sleepUntil=now+20000;m.target=null;m.until=0;m.waypoint=null;
+  inInstance(p.instance,{type:'monster-sleep',until:m.sleepUntil,explosion:true});
+ }
+ inInstance(p.instance,{type:'explosion',x,z,hit,by:p.id});
+}
+
 function handleShoot(p){
  const s=instanceFor(p);if(!s||p.room!=='basement'||!p.equipped||!WEAPONS.includes(p.equipped))return;
  const now=Date.now();
  if(p.equipped!==WEAPONS[p.slot]||!s.puzzle[p.equipped])return;
+ // A finished reload always tops the magazine up, even if the timer message was lost.
+ if(p.ammo<MAG&&p.reloadUntil&&now>=p.reloadUntil){p.ammo=MAG;p.reloadUntil=0;send(p.socket,{type:'ammo',ammo:p.ammo,reloading:false})}
  if(now<p.reloadUntil||p.ammo<=0)return;
  p.ammo--;p.noiseUntil=now+600;p.noiseLoudUntil=now+900;
  const m=s.monster,n=s.n,cells=s.cells||layout(n,s.seed||0);
@@ -243,9 +277,13 @@ setInterval(()=>{
   let heard=null,best=Infinity;
   for(const p of targets){
    const distance=Math.hypot(p.x-m.x,p.z-m.z);
-   const range=p.noiseLoudUntil>now?17:p.noiseUntil>now?(p.running?12:6.5):2.6;
-   if(distance<range&&distance<best){best=distance;heard=p}}
-  if(heard){m.target={x:heard.x,z:heard.z};m.until=now+5000}
+   const loud=p.noiseLoudUntil>now,noisy=p.noiseUntil>now;
+   let range=4.5;                       // he feels people standing close
+   if(loud)range=19;else if(noisy)range=p.running?15:8.5;
+   if(distance>=range)continue;
+   const los=distance<4.5||lineOfSight(n,cells,p.x,p.z,m.x,m.z,session.puzzle.door);
+   if(los&&distance<best){best=distance;heard=p}}
+  if(heard){m.target={x:heard.x,z:heard.z};m.until=now+8000}   // he remembers where you were
   if(now>m.until)m.target=null;
   if(!m.target&&(!m.patrol||Math.hypot(m.x-m.patrol.x,m.z-m.patrol.z)<.5)){
    let i;do{i=Math.floor(Math.random()*(n*n))}while(isSafe(n,...Object.values(cellCenter(n,i))));m.patrol=cellCenter(n,i)}
@@ -258,7 +296,7 @@ setInterval(()=>{
   }
   if(session.over)continue;
   const point=m.waypoint,dx=point.x-m.x,dz=point.z-m.z,distance=Math.hypot(dx,dz);
-  if(distance>.05){const speed=m.rescueTarget?0.9:(m.target?4.3:1.7),amount=Math.min(distance,speed*.1);m.x+=dx/distance*amount;m.z+=dz/distance*amount;m.rotation=Math.atan2(-dx,-dz)}
+  if(distance>.05){const speed=m.rescueTarget?0.9:(m.target?4.6:1.8),amount=Math.min(distance,speed*.1);m.x+=dx/distance*amount;m.z+=dz/distance*amount;m.rotation=Math.atan2(-dx,-dz)}
   for(const p of targets)if(!p.rescuing&&now>(m.calmUntil||0)&&Math.hypot(p.x-m.x,p.z-m.z)<.85){
    const alive=instancePlayers(id).filter(q=>!q.down&&q.room==='basement');
    if(session.coop&&alive.length>1){

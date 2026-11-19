@@ -1,9 +1,10 @@
-import { makeTool, makeWeapon } from './tools.js';
+import { makeTool, makeWeapon, makeRPG, makeCamera } from './tools.js';
 import * as THREE from 'three';
 import { CELL, gridFor, layout, entryFor, doorFor, isSafe, limitFor } from './layout.js';
 
 const WALL=0x574a3f,FLOOR=0x36302a,CEIL=0x2b2521,CORRIDOR=0x41372f;
 export const WEAPON_COLORS={akA:0x9c2b1c,akB:0x1f4f9c};
+export const PICKUPS=['hammer','crowbar','akA','akB','rpg','cameraA','cameraB'];
 
 export function createMaze(n=gridFor(false),seed=0){
  const group=new THREE.Group(),walls=[],items={},half=(n-1)/2,entry=entryFor(n),size=n*CELL+2;
@@ -46,19 +47,35 @@ export function createMaze(n=gridFor(false),seed=0){
  const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.3,.74),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas)}));
  sign.position.set(entry.x-2.6,1.65,signZ-.08);sign.rotation.y=Math.PI;group.add(sign);
  // One central door with a solid wall behind it: opening it teleports to level three.
- const door=doorFor();wall(door.x,door.z-.34,2.15,.15);
+ const door=doorFor();
+ // A shallow lit chamber sits behind the doorway, so an opened door leads somewhere.
+ box(2.2,3.2,.12,door.x,1.6,door.z-.62,0x241a16);
+ const glow=new THREE.Mesh(new THREE.PlaneGeometry(1.9,2.7),new THREE.MeshBasicMaterial({color:0x8c1206}));
+ glow.position.set(door.x,1.45,door.z-.55);group.add(glow);
+ const glowLight=new THREE.PointLight(0xff3a12,7,7,1.6);glowLight.position.set(door.x,1.6,door.z-.35);group.add(glowLight);
+ wall(door.x,door.z-.34,2.15,.15);
  box(.12,2.9,.22,door.x-1,1.45,door.z,0x30251d);box(.12,2.9,.22,door.x+1,1.45,door.z,0x30251d);box(2.12,.12,.22,door.x,2.9,door.z,0x30251d);
+ // The leaf and the boards are single sided: from the far corridor you see a plain wall.
  items.door=new THREE.Group();items.door.position.set(door.x-.9,0,door.z);group.add(items.door);
- box(1.8,2.7,.12,.9,1.35,0,0x40301f,items.door);box(1.4,2.2,.025,.9,1.42,.07,0x4d3a26,items.door);sphere(items.door,.06,0xc5b56c,1.52,1.17,.1);
+ const leafMat=new THREE.MeshStandardMaterial({color:0x453322,roughness:.8,side:THREE.FrontSide});
+ const leaf=new THREE.Mesh(new THREE.PlaneGeometry(1.8,2.7),leafMat);leaf.position.set(.9,1.35,.08);items.door.add(leaf);
+ const panel=new THREE.Mesh(new THREE.PlaneGeometry(1.4,2.2),new THREE.MeshStandardMaterial({color:0x54402b,roughness:.75,side:THREE.FrontSide}));
+ panel.position.set(.9,1.42,.10);items.door.add(panel);
+ sphere(items.door,.06,0xc5b56c,1.52,1.17,.12);
  items.boards=new THREE.Group();group.add(items.boards);items.nails=new THREE.Group();group.add(items.nails);
- for(const [y,angle] of [[.9,.08],[1.8,-.08]]){const plank=box(2.4,.24,.09,door.x,y,door.z+.12,0x3a2a1c,items.boards);plank.rotation.z=angle;
+ for(const [y,angle] of [[.9,.08],[1.8,-.08]]){
+  const plank=new THREE.Mesh(new THREE.PlaneGeometry(2.4,.24),new THREE.MeshStandardMaterial({color:0x3a2a1c,roughness:.9,side:THREE.FrontSide}));
+  plank.position.set(door.x,y,door.z+.19);plank.rotation.z=angle;items.boards.add(plank);
   for(const x of [-.8,.8])sphere(items.nails,.045,0x8d8a7d,door.x+x,y+Math.sin(angle)*x,door.z+.18)}
  items.lamp=new THREE.PointLight(0xff5f2a,13,15,1.4);items.lamp.position.set(door.x,2.6,door.z+.9);group.add(items.lamp);
 
  function pickup(name){const g=new THREE.Group();group.add(g);const pedestal=box(.8,.12,.8,0,.06,0,0x2f2a24,g);pedestal.name='pedestal';
-  const model=name==='hammer'||name==='crowbar'?makeTool(name):makeWeapon(WEAPON_COLORS[name]||0x9c2b1c);
+  const model=name==='hammer'||name==='crowbar'?makeTool(name)
+   :name==='rpg'?makeRPG()
+   :name==='cameraA'||name==='cameraB'?makeCamera()
+   :makeWeapon(WEAPON_COLORS[name]||0x9c2b1c);
   model.name='tool';model.position.y=.15;g.add(model);g.visible=false;return g}
- for(const name of ['hammer','crowbar','akA','akB'])items[name]=pickup(name);
+ for(const name of PICKUPS)items[name]=pickup(name);
  return {group,walls,items,n,entry,door,cells}
 }
 
@@ -74,7 +91,7 @@ export function placeSpots(maze,spots){
  }
 }
 export function updateMaze(maze,p){
- for(const name of ['hammer','crowbar','akA','akB'])if(maze.items[name])maze.items[name].visible=!p[name];
+ for(const name of PICKUPS)if(maze.items[name])maze.items[name].visible=!p[name];
  maze.items.nails.visible=!p.nails;maze.items.boards.visible=!p.boards;maze.items.door.rotation.y=p.door?-1.35:0;
  maze.items.lamp.intensity=p.door?14:9;
 }

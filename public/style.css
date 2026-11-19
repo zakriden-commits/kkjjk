@@ -86,6 +86,7 @@ select{margin-bottom:14px;background-image:linear-gradient(45deg,transparent 50%
  border:1px solid rgba(255,90,45,.22);background:rgba(255,80,40,.06);font-size:9px;color:#f0bda9;flex:0 0 auto}
 #inventory button img{width:19px;height:19px;object-fit:contain;filter:saturate(.9)}
 #inventory button span{font-size:8px;line-height:1.1;text-align:center}
+#slot-rpg.slot-rpg{font-size:9px;letter-spacing:.04em;color:#cfe0a8}
 #inventory button.selected{border-color:var(--lava);background:rgba(255,60,20,.22);color:#ffe0cf;box-shadow:0 0 16px rgba(255,60,20,.4)}
 #inventory button:disabled{opacity:.32}
 #jump{position:absolute;right:18px;top:calc(50% - 78px);transform:translateY(-50%);width:56px;height:56px;border-radius:50%;
@@ -143,3 +144,14 @@ select{margin-bottom:14px;background-image:linear-gradient(45deg,transparent 50%
 #over strong{font-size:clamp(24px,7vw,46px);color:#ff3b12;letter-spacing:.1em}
 #over span{font-size:14px;color:#ffbea6;max-width:80%}
 #over button{padding:12px 24px;border-radius:12px;border:0;background:var(--lava);color:#1a0703;font-weight:700}
+
+#camera-btn{position:absolute;right:18px;bottom:calc(232px + env(safe-area-inset-bottom));padding:8px 14px;border-radius:999px;
+ border:1px solid rgba(90,230,210,.5);background:rgba(10,34,32,.9);color:#9ff2e7;font-size:10px;letter-spacing:.1em}
+#map-screen{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(6,3,2,.92);z-index:25}
+.map-card{width:min(96vw,880px);max-height:94vh;padding:10px;border-radius:16px;border:1px solid rgba(255,90,45,.4);background:rgba(18,10,8,.98);display:flex;flex-direction:column;gap:8px}
+.map-head{display:flex;align-items:center;justify-content:space-between;font-size:12px;letter-spacing:.2em;color:#ffb08a}
+.map-head button{width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,90,45,.4);background:transparent;color:#ffb08a;font-size:14px}
+#map-canvas{width:100%;height:auto;max-height:76vh;border-radius:10px;display:block}
+.map-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:#c9a08c}
+.map-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.lg-self{background:#8dff7a}.lg-mon{background:#ff2a08}.lg-item{background:#ffd166}.lg-door{background:#e0300f}

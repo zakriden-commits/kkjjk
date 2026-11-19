@@ -6,19 +6,55 @@ export function makeTool(type){const g=new THREE.Group();if(type==='hammer'){cyl
 
 // AK-47 built from simple parts: dark receiver, wooden furniture in the owner colour.
 export function makeWeapon(color=0x8f2f22){
- const g=new THREE.Group(),body=new THREE.MeshStandardMaterial({color,roughness:.55}),metal=new THREE.MeshStandardMaterial({color:0x3b3f40,metalness:.75,roughness:.4});
+ const g=new THREE.Group(),body=new THREE.MeshStandardMaterial({color,roughness:.5}),wood=new THREE.MeshStandardMaterial({color:0x6b4526,roughness:.85}),
+  metal=new THREE.MeshStandardMaterial({color:0x2f3334,metalness:.8,roughness:.35}),black=new THREE.MeshStandardMaterial({color:0x16191a,roughness:.6});
  const plate=(w,h,d,mat,x,y,z,rz=0)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.rotation.z=rz;g.add(m);return m};
- const tube=(r,len,mat,x,y,z)=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,10),mat);m.rotation.x=Math.PI/2;m.position.set(x,y,z);g.add(m);return m};
- plate(.06,.10,.34,metal,0,.03,.02);           // receiver
- plate(.05,.05,.20,metal,0,.09,-.02);          // dust cover
- plate(.05,.04,.22,body,0,-.01,.20);           // handguard
- plate(.05,.06,.16,body,0,.02,-.22);           // stock
- plate(.05,.14,.07,body,0,-.07,.03,-.25);      // pistol grip
- plate(.04,.10,.05,metal,0,-.08,.12,.22);      // magazine
- plate(.04,.10,.05,metal,0,-.17,.16,.22);
- tube(.012,.42,metal,0,.04,.42);               // barrel
- tube(.016,.16,metal,0,.055,.30);
- plate(.02,.035,.03,metal,0,.10,.58);          // front sight
- plate(.02,.03,.06,metal,0,.10,-.08);
- return g
+ const tube=(r,len,mat,x,y,z,rz=0)=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,12),mat);m.rotation.x=Math.PI/2;m.rotation.z=rz;m.position.set(x,y,z);g.add(m);return m};
+ plate(.07,.11,.40,metal,0,.02,.02);            // receiver
+ plate(.06,.06,.26,metal,0,.08,-.02);           // dust cover
+ plate(.055,.02,.26,black,0,.105,-.02);         // top rail
+ plate(.06,.05,.16,wood,0,.085,.10);            // upper handguard
+ plate(.07,.06,.24,wood,0,-.005,.24);           // lower handguard
+ plate(.05,.10,.24,wood,0,.02,-.26,.06);        // stock
+ plate(.03,.03,.10,metal,0,.02,-.38);           // butt plate
+ plate(.055,.15,.08,wood,0,-.075,.03,-.22);     // pistol grip
+ const mag=new THREE.Group();g.add(mag);
+ for(let i=0;i<4;i++){const p=plate(.05,.05,.07,metal,0,-.02-i*.045,.10+i*.028,-.32-i*.12);mag.add(p)}
+ tube(.013,.46,metal,0,.045,.46);               // barrel
+ tube(.02,.10,metal,0,.045,.72);                // muzzle brake
+ plate(.02,.05,.03,metal,0,.115,.60);           // front sight post
+ plate(.02,.04,.05,metal,0,.12,.05);            // rear sight
+ plate(.02,.02,.20,metal,.055,.02,.10);         // side rail
+ tube(.02,.06,metal,.02,-.08,.20);              // sling loop
+ g.scale.setScalar(1.05);
+ return g;
+}
+
+// RPG-7: wide tube, cone warhead, wooden grips.
+export function makeRPG(){
+ const g=new THREE.Group(),green=new THREE.MeshStandardMaterial({color:0x4c5a34,roughness:.7,metalness:.2}),
+  dark=new THREE.MeshStandardMaterial({color:0x2a2f22,roughness:.6}),metal=new THREE.MeshStandardMaterial({color:0x51565a,metalness:.7,roughness:.4}),
+  wood=new THREE.MeshStandardMaterial({color:0x6b4526,roughness:.85}),red=new THREE.MeshStandardMaterial({color:0x8f2f22,roughness:.55});
+ const tube=(r,len,mat,x,y,z)=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,16),mat);m.rotation.x=Math.PI/2;m.position.set(x,y,z);g.add(m);return m};
+ tube(.075,1.05,dark,0,0,.05);                 // main tube
+ tube(.085,.18,green,0,0,-.45);                // rear flare
+ const cone=new THREE.Mesh(new THREE.CylinderGeometry(.02,.16,.34,16),green);cone.rotation.x=Math.PI/2;cone.position.set(0,0,.70);g.add(cone);
+ const nose=new THREE.Mesh(new THREE.CylinderGeometry(.005,.02,.12,12),metal);nose.rotation.x=Math.PI/2;nose.position.set(0,0,.92);g.add(nose);
+ const grip=(w,h,d,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wood);m.position.set(x,y,z);g.add(m);return m};
+ grip(.05,.16,.06,0,-.12,-.16);grip(.05,.14,.06,0,-.11,.12);
+ const sight=new THREE.Mesh(new THREE.BoxGeometry(.03,.10,.05),metal);sight.position.set(0,.12,.02);g.add(sight);
+ const band=new THREE.Mesh(new THREE.TorusGeometry(.078,.012,8,18),red);band.position.set(0,0,.22);g.add(band);
+ g.scale.setScalar(.95);
+ return g;
+}
+
+// A small body camera: box, lens and a red LED.
+export function makeCamera(){
+ const g=new THREE.Group(),shell=new THREE.MeshStandardMaterial({color:0x24282b,metalness:.5,roughness:.5}),
+  lens=new THREE.MeshStandardMaterial({color:0x101517,metalness:.9,roughness:.15}),led=new THREE.MeshStandardMaterial({color:0xff3b12,emissive:0xff2a08,emissiveIntensity:1.4});
+ const body=new THREE.Mesh(new THREE.BoxGeometry(.20,.13,.16),shell);g.add(body);
+ const glass=new THREE.Mesh(new THREE.CylinderGeometry(.055,.055,.05,16),lens);glass.rotation.x=Math.PI/2;glass.position.set(0,0,.10);g.add(glass);
+ const dot=new THREE.Mesh(new THREE.SphereGeometry(.012,8,6),led);dot.position.set(.07,.07,.06);g.add(dot);
+ const mount=new THREE.Mesh(new THREE.BoxGeometry(.06,.03,.06),shell);mount.position.set(0,-.08,.02);g.add(mount);
+ return g;
 }
