@@ -42,8 +42,8 @@ export function createMaze(n=gridFor(false),seed=0){
  box(2.4,2.9,.08,entry.x-2.6,1.45,signZ,0x2b2320);box(1.9,2.55,.08,entry.x-2.6,1.28,signZ-.03,0x171310);
  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;const ctx=canvas.getContext('2d');
  ctx.fillStyle='#1c0d0b';ctx.fillRect(0,0,512,256);ctx.fillStyle='#ff5a2b';ctx.textAlign='center';ctx.font='bold 62px Arial';ctx.fillText('ПРАВИЛА',256,96);
- const coop=n>=15;
- ctx.font='30px Arial';ctx.fillStyle='#e8c9b6';ctx.fillText(coop?'Вдвоём: 4 предмета':'Один: 3 предмета',256,158);ctx.fillText(coop?'Оружие у каждого своё':'Не шуми, он слышит',256,200);
+ const coop=n>=17;
+ ctx.font='30px Arial';ctx.fillStyle='#e8c9b6';ctx.fillText(coop?'Вдвоём: 7 предметов':'Один: 5 предметов',256,158);ctx.fillText(coop?'Оружие у каждого своё':'РПГ и камера тоже здесь',256,200);
  const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.3,.74),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas)}));
  sign.position.set(entry.x-2.6,1.65,signZ-.08);sign.rotation.y=Math.PI;group.add(sign);
  // Wall mounted CCTV cameras in the far corners. They are the eyes of the maze.
